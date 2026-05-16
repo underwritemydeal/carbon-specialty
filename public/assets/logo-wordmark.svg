@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" role="img" aria-label="Carbon Specialty Insurance">
+  <defs>
+    
+  </defs>
+  <text x="380" y="110" class="name" font-size="100" text-anchor="middle" fill="#0B0B0C">
+    <tspan fill="#1F4D38">CA</tspan><tspan>RBON</tspan>
+  </text>
+  <line x1="330" y1="138" x2="430" y2="138" stroke="#0B0B0C" stroke-width="1"></line>
+  <text x="380" y="170" class="sub" font-size="16" text-anchor="middle" fill="#0B0B0C">SPECIALTY · INSURANCE</text>
+</svg>

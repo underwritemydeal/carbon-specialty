@@ -1,0 +1,367 @@
+/* =========================================================================
+   Carbon Specialty — Foundations
+   Color, type, spacing, radii, motion tokens.
+   Fonts are provided by next/font and exposed as CSS variables on <html>.
+   ========================================================================= */
+
+:root {
+  /* -----------------------------------------------------------------------
+     COLOR — Three roles, four neutrals, one accent.
+     ----------------------------------------------------------------------- */
+  --ink:        #0B0B0C;
+  --ink-2:      #2A2A2D;
+  --ink-3:      #6E6E72;
+
+  --paper:      #F5F2EC;
+  --paper-2:    #EAE5DB;
+  --paper-3:    #DFD9CC;
+  --concrete:   #C8C5BD;
+
+  /* Pine — single accent, sparingly */
+  --ember:      #1F4D38;
+  --ember-ink:  #112E22;
+  --ember-tint: #D6E2DC;
+
+  /* Semantic */
+  --ok:         #2F6A3E;
+  --warn:       #B8861A;
+  --err:        #A8321B;
+
+  /* Semantic aliases */
+  --fg-1:       var(--ink);
+  --fg-2:       var(--ink-2);
+  --fg-3:       var(--ink-3);
+  --bg-1:       var(--paper);
+  --bg-2:       var(--paper-2);
+  --bg-3:       var(--paper-3);
+  --border:     var(--ink);
+  --border-2:   var(--concrete);
+  --accent:     var(--ember);
+
+  /* -----------------------------------------------------------------------
+     TYPOGRAPHY — three families (next/font supplies the variables).
+     ----------------------------------------------------------------------- */
+  --font-display: var(--font-plex-serif), Georgia, "Times New Roman", serif;
+  --font-body:    var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:    var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-wordmark: var(--font-bodoni), "Bodoni 72", "Didot", "Times New Roman", serif;
+
+  /* Scale (px). */
+  --t-xs:   12px;
+  --t-sm:   14px;
+  --t-base: 16px;
+  --t-md:   20px;
+  --t-lg:   28px;
+  --t-xl:   40px;
+  --t-2xl:  56px;
+  --t-3xl:  80px;
+  --t-display: 120px;
+
+  --lh-tight:   1.02;
+  --lh-snug:    1.12;
+  --lh-base:    1.5;
+  --lh-loose:   1.7;
+
+  --tk-display: -0.02em;
+  --tk-tight:   -0.01em;
+  --tk-base:    0em;
+  --tk-mono:    0.08em;
+  --tk-eyebrow: 0.14em;
+
+  /* SPACING — 8pt grid */
+  --s-0:   0;
+  --s-1:   4px;
+  --s-2:   8px;
+  --s-3:   12px;
+  --s-4:   16px;
+  --s-5:   24px;
+  --s-6:   32px;
+  --s-7:   48px;
+  --s-8:   64px;
+  --s-9:   80px;
+  --s-10:  96px;
+  --s-11:  128px;
+  --s-12:  160px;
+
+  /* RADII */
+  --r-0:  0px;
+  --r-1:  2px;
+  --r-2:  4px;
+  --r-pill: 999px;
+
+  /* BORDERS */
+  --bw:        1px;
+  --rule:      1px solid var(--ink);
+  --rule-soft: 1px solid var(--concrete);
+
+  /* MOTION — sharp out, soft in */
+  --ease:     cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 180ms;
+  --dur-med:  320ms;
+  --dur-slow: 600ms;
+
+  /* LAYOUT */
+  --gutter:    80px;
+  --gutter-sm: 16px;
+  --maxw:      1280px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --gutter: var(--gutter-sm);
+    --t-3xl:  56px;
+    --t-2xl:  44px;
+    --t-xl:   32px;
+    --t-lg:   24px;
+  }
+}
+
+/* =========================================================================
+   SEMANTIC TYPE
+   ========================================================================= */
+.display, .h-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-display);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tk-display);
+  color: var(--fg-1);
+}
+.h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-3xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tk-display);
+  color: var(--fg-1);
+}
+.h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-2xl);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tk-display);
+  color: var(--fg-1);
+}
+.h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--t-xl);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tk-tight);
+  color: var(--fg-1);
+}
+.h4 {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--t-lg);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tk-tight);
+  color: var(--fg-1);
+}
+.body, p {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--t-base);
+  line-height: var(--lh-base);
+  letter-spacing: var(--tk-base);
+  color: var(--fg-1);
+}
+.body-lg {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--t-md);
+  line-height: var(--lh-base);
+  color: var(--fg-1);
+}
+.body-sm {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--t-sm);
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+}
+.caption {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: var(--t-xs);
+  line-height: var(--lh-base);
+  color: var(--fg-3);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--t-xs);
+  letter-spacing: var(--tk-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+.italic-serif {
+  font-family: var(--font-display);
+  font-style: italic;
+}
+
+/* =========================================================================
+   WORDMARK — the canonical Carbon lockup.
+   ========================================================================= */
+.wordmark {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink);
+}
+.wm-name {
+  font-family: var(--font-wordmark);
+  font-weight: 400;
+  font-size: 72px;
+  line-height: 1;
+  letter-spacing: 0.32em;
+  padding-left: 0.32em;
+  text-transform: uppercase;
+  font-variation-settings: "opsz" 96;
+  color: var(--ink);
+}
+.wm-name .wm-ca { color: var(--ember); }
+.wm-rule { width: 100px; height: 1px; background: var(--ink); }
+.wm-sub {
+  font-family: var(--font-wordmark);
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.55em;
+  padding-left: 0.55em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.wordmark.inverted,
+.wordmark.inverted .wm-name,
+.wordmark.inverted .wm-sub { color: var(--paper); }
+.wordmark.inverted .wm-rule { background: var(--paper-3); }
+
+.wordmark.sm .wm-name { font-size: 28px; }
+.wordmark.sm .wm-sub  { font-size: 9px; }
+.wordmark.sm .wm-rule { width: 48px; }
+.wordmark.sm          { gap: 8px; }
+
+.wordmark.md .wm-name { font-size: 48px; }
+.wordmark.md .wm-sub  { font-size: 11px; }
+.wordmark.md .wm-rule { width: 72px; }
+.wordmark.md          { gap: 10px; }
+
+.wordmark.lg .wm-name { font-size: 96px; }
+.wordmark.lg .wm-sub  { font-size: 16px; }
+.wordmark.lg .wm-rule { width: 140px; }
+
+.wordmark.xl .wm-name { font-size: 144px; }
+.wordmark.xl .wm-sub  { font-size: 20px; }
+.wordmark.xl .wm-rule { width: 200px; }
+
+/* Mobile wordmark — at ≤375px viewport render at .sm size, centered, tracking preserved */
+@media (max-width: 375px) {
+  .wordmark .wm-name { font-size: 28px; }
+  .wordmark .wm-sub  { font-size: 9px; }
+  .wordmark .wm-rule { width: 48px; }
+  .wordmark          { gap: 8px; }
+}
+
+/* =========================================================================
+   PRIMITIVES
+   ========================================================================= */
+.rule { height: 1px; background: var(--ink); border: 0; width: 100%; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 14px 20px;
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  border-radius: var(--r-0);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.btn:hover  { background: var(--paper); color: var(--ink); }
+.btn:active { background: var(--ember); border-color: var(--ember); color: var(--paper); }
+
+.btn-secondary { background: transparent; color: var(--ink); }
+.btn-secondary:hover  { background: var(--ink); color: var(--paper); }
+.btn-secondary:active { background: var(--ember); border-color: var(--ember); color: var(--paper); }
+
+.btn-ghost {
+  background: transparent; color: var(--ink); border-color: transparent;
+  padding-left: 0; padding-right: 0;
+}
+.btn-ghost:hover { color: var(--ember); background: transparent; }
+
+.link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.link:hover { border-bottom-color: var(--ember); }
+
+.card        { border: var(--rule); background: var(--paper); color: var(--ink); padding: var(--s-6); border-radius: var(--r-0); }
+.card-inverted { border: 0; background: var(--ink); color: var(--paper); padding: var(--s-6); }
+.card-index  { border: 0; border-top: var(--rule); background: transparent; padding: var(--s-5) 0; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  font-family: var(--font-mono); font-size: var(--t-xs);
+  letter-spacing: var(--tk-mono); text-transform: uppercase;
+  padding: 4px 8px; border: 1px solid var(--ink); border-radius: var(--r-1);
+  background: var(--paper); color: var(--ink);
+}
+.chip-ink   { background: var(--ink); color: var(--paper); }
+.chip-ember { background: var(--ember); border-color: var(--ember); color: var(--paper); }
+
+.bg-grid {
+  background-image: radial-gradient(circle at 1px 1px, var(--ink) 1px, transparent 0);
+  background-size: 16px 16px;
+}
+
+/* =========================================================================
+   BASE RESET
+   ========================================================================= */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  color: var(--fg-1);
+  background: var(--bg-1);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img { display: block; max-width: 100%; }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
