@@ -5,7 +5,7 @@ import { Hero } from "@/components/Hero";
 import { Section } from "@/components/Section";
 import { CoverageCards } from "@/components/CoverageCards";
 import { CarrierBar } from "@/components/CarrierBar";
-import { Stats } from "@/components/Stats";
+import { Positioning } from "@/components/Stats";
 import { AssetClasses } from "@/components/AssetClasses";
 import { Process } from "@/components/Process";
 import { FAQ, HOME_FAQ } from "@/components/FAQ";
@@ -22,7 +22,7 @@ import {
 export const metadata: Metadata = {
   title: "Real estate and apartment building insurance — California & the Western US",
   description:
-    "Carbon Specialty is an independent insurance brokerage focused on real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings across California and the Western United States. Median bind 48 hours.",
+    "Carbon Specialty is an independent insurance brokerage focused on real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings across California and the Western United States.",
   alternates: { canonical: "/" },
 };
 
@@ -54,7 +54,7 @@ export default function HomePage() {
           <CoverageCards />
         </Section>
         <CarrierBar />
-        <Stats />
+        <Positioning />
         <Section
           number={4}
           eyebrow="04 — What we write"

@@ -8,17 +8,16 @@ import {
   localBusiness,
   breadcrumbs,
 } from "@/lib/schema";
-import { SITE } from "@/lib/site";
-
 export const metadata: Metadata = {
-  title: "Contact — Phone, email, hours",
-  description: `Reach Carbon Specialty. Phone ${SITE.phoneDisplay}, email ${SITE.email}, Mon–Fri 8a–6p Pacific. Based in Long Beach, California.`,
+  title: "Contact — Office, hours, licensure",
+  description:
+    "Carbon Specialty office, hours, and licensure. Direct phone and email are launching with the public site — use the Carbon chat or the quote form for inquiries today.",
   alternates: { canonical: "/contact" },
 };
 
 const ROWS: [string, React.ReactNode][] = [
-  ["Phone", <a key="p" href="tel:+15625550144" className="link">{SITE.phoneDisplay}</a>],
-  ["Email", <a key="e" href={`mailto:${SITE.email}`} className="link">{SITE.email}</a>],
+  ["Phone", "Launching soon — use the chat or quote form."],
+  ["Email", "Launching soon — use the quote form."],
   ["Hours", "Mon – Fri · 8a – 6p Pacific"],
   ["Office", "Long Beach, California"],
   ["Licensed", "AZ · CA · CO · ID · NV · OR · TX · UT · WA"],
@@ -47,7 +46,7 @@ export default function ContactPage() {
               Reach Carbon. <em style={{ fontStyle: "italic" }}>Directly.</em>
             </>
           }
-          lede="No tickets, no chatbot tree (other than the one on the homepage, which is voluntary). Phone, email, business hours."
+          lede="No tickets, no chatbot tree (other than the one on the homepage, which is voluntary). Direct phone and email are launching with the public site — until then, the Carbon chat or the quote form reaches a specialist."
         >
           <dl
             style={{

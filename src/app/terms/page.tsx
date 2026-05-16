@@ -80,8 +80,8 @@ export default function TermsPage() {
             <section>
               <H3>5. Contact</H3>
               <p>
-                Carbon Specialty Insurance Services · Long Beach, California ·{" "}
-                <a href="mailto:hello@carbonspecialty.com" className="link">hello@carbonspecialty.com</a>
+                Carbon Specialty Insurance Services · Long Beach, California. Direct email is
+                launching with the public site.
               </p>
             </section>
           </article>

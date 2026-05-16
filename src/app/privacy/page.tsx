@@ -67,8 +67,9 @@ export default function PrivacyPage() {
               <p>
                 California residents have the right to know what we collect, request deletion,
                 opt out of sale or sharing of personal information, correct inaccuracies, and
-                limit the use of sensitive personal information. To exercise any of these rights,
-                email <a href="mailto:hello@carbonspecialty.com" className="link">hello@carbonspecialty.com</a>.
+                limit the use of sensitive personal information. A direct contact channel is
+                launching with the public site; until then, send the request through the Carbon
+                chat or the quote form and a specialist will route it.
               </p>
             </section>
             <section>
@@ -82,8 +83,8 @@ export default function PrivacyPage() {
             <section>
               <H3>5. Contact</H3>
               <p>
-                Carbon Specialty Insurance Services · Long Beach, California ·{" "}
-                <a href="mailto:hello@carbonspecialty.com" className="link">hello@carbonspecialty.com</a>
+                Carbon Specialty Insurance Services · Long Beach, California. Direct email is
+                launching with the public site.
               </p>
             </section>
           </article>

@@ -383,7 +383,7 @@ export function CarbonChat({
           >
             <span>↵ to send · ⇧↵ for newline</span>
             <span>
-              Synced to <span style={{ color: "var(--ember)" }}>Covr</span>
+              <span style={{ color: "var(--ember)" }}>Specialist</span> reviews every submission
             </span>
           </div>
         </div>

@@ -1,16 +1,10 @@
 import type { MetadataRoute } from "next";
-import { SITE } from "@/lib/site";
 
+// Pre-launch lockdown — see /AGENTS.md "Deploy safety" + sprint C.S.1.1.
+// Restore the per-rule allow + sitemap reference when content is verified
+// for launch.
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [
-      {
-        userAgent: "*",
-        allow: "/",
-        disallow: ["/api/"],
-      },
-    ],
-    sitemap: `${SITE.url}/sitemap.xml`,
-    host: SITE.url,
+    rules: [{ userAgent: "*", disallow: "/" }],
   };
 }

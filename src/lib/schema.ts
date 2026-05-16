@@ -26,6 +26,9 @@ function areaServed() {
   }));
 }
 
+// Sprint C.S.1.1 — telephone/email intentionally omitted from JSON-LD until
+// real numbers exist. Restore by adding `telephone: SITE.phone, email: SITE.email`
+// once SITE.phone and SITE.email are real values.
 export function insuranceAgency(): Json {
   return {
     "@context": "https://schema.org",
@@ -37,8 +40,6 @@ export function insuranceAgency(): Json {
     logo: `${SITE.url}/assets/logo-wordmark.svg`,
     image: `${SITE.url}/api/og?title=Carbon%20Specialty`,
     description: SITE.description,
-    telephone: SITE.phone,
-    email: SITE.email,
     address: postalAddress(),
     areaServed: areaServed(),
     openingHours: SITE.hoursOfOperation,
@@ -65,8 +66,6 @@ export function localBusiness(): Json {
     "@id": `${SITE.url}/#localbusiness`,
     name: SITE.name,
     url: SITE.url,
-    telephone: SITE.phone,
-    email: SITE.email,
     address: postalAddress(),
     openingHours: SITE.hoursOfOperation,
     priceRange: "$$",
@@ -116,15 +115,14 @@ export function howToQuote(): Json {
     "@type": "HowTo",
     name: "How Carbon Specialty's AI quote intake works",
     description:
-      "Carbon's conversational AI quote tool captures the details of your real estate schedule in a 60-second intake, then routes it to a specialist for an indication within one business day.",
-    totalTime: "PT60S",
+      "Carbon's conversational AI quote tool captures the details of your real estate schedule and routes them to a licensed specialist for review and an indication.",
     tool: [{ "@type": "HowToTool", name: "Carbon AI agent" }],
     step: [
       { "@type": "HowToStep", position: 1, name: "Open chat", text: "Open the Carbon chat from the hero input or the Get-a-quote CTA." },
       { "@type": "HowToStep", position: 2, name: "Describe your building", text: "Tell Carbon about the asset — city, units, year built, current carrier — in your own words." },
       { "@type": "HowToStep", position: 3, name: "AI captures details", text: "Carbon's AI captures the structured intake data (asset class, address, units, renewal date, owner contact)." },
-      { "@type": "HowToStep", position: 4, name: "Specialist reviews", text: "A Carbon specialist reviews the submission and requests anything missing (rent rolls, loss runs, dec page)." },
-      { "@type": "HowToStep", position: 5, name: "Quote within 48 hours", text: "Median bind time is 48 hours from a complete submission — you receive an indication within one business day." },
+      { "@type": "HowToStep", position: 4, name: "Specialist reviews", text: "A licensed Carbon specialist reviews the submission and requests anything missing (rent rolls, loss runs, dec page)." },
+      { "@type": "HowToStep", position: 5, name: "Specialist follow-up", text: "The specialist follows up with the indication and timing once underwriting has read the schedule and ordered carrier quotes." },
     ],
   };
 }

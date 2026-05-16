@@ -58,7 +58,14 @@ export const metadata: Metadata = {
     description: "Real estate and apartment building insurance.",
     images: ["/api/og?title=Carbon%20Specialty"],
   },
-  robots: { index: true, follow: true },
+  // Pre-launch lockdown — see /AGENTS.md "Deploy safety" + sprint C.S.1.1.
+  // Flip back to { index: true, follow: true } when content is broker- and
+  // legal-reviewed and ready for launch.
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false },
+  },
   icons: { icon: "/favicon.ico" },
 };
 

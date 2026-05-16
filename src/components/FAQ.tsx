@@ -25,7 +25,7 @@ export const HOME_FAQ: FAQItem[] = [
   {
     q: "How fast can you turn around a quote?",
     // DRAFT — review before publishing
-    a: "Median bind time is 48 hours from a complete submission. The clock starts when we have rent rolls (or unit count + year built), current dec page, and loss runs. The chat or quote form gathers most of this; the specialist requests the rest.",
+    a: "Turnaround depends on the schedule and what carriers ask for. The clock effectively starts when we have rent rolls (or unit count + year built), the current dec page, and loss runs. The chat or quote form gathers most of this; the specialist requests the rest and tells you up front when to expect an indication.",
   },
   {
     q: "What if I'm switching from another agency mid-term?",

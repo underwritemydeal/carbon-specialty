@@ -53,8 +53,7 @@ export default function GlobalError({
             color: "var(--ink-2)",
           }}
         >
-          An error came up rendering this page. Try again, or call us at{" "}
-          <a href="tel:+15625550144" className="link">+1 (562) 555-0144</a>.
+          An error came up rendering this page. Try again, or reach a specialist through the Carbon chat or the quote form.
         </p>
         <button onClick={reset} className="btn" style={{ marginTop: 32 }}>
           Try again

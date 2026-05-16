@@ -77,7 +77,7 @@ export async function GET(req: Request) {
           }}
         >
           <span>carbonspecialty.com</span>
-          <span style={{ color: "#1F4D38" }}>60+ A-rated markets · median bind 48h</span>
+          <span style={{ color: "#1F4D38" }}>Real estate insurance · Western United States</span>
         </div>
       </div>
     ),

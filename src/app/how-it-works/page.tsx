@@ -18,7 +18,7 @@ import {
 const HIW_FAQ: FAQItem[] = [
   {
     q: "How long does the AI quote intake take?",
-    a: "Most chats are complete in under 60 seconds — about as long as it takes to describe the building. The 48-hour clock starts after a Carbon specialist has reviewed the submission and confirmed nothing is missing.",
+    a: "Most chats take about as long as it takes to describe the building — a few minutes of back-and-forth. The clock toward an indication starts after a Carbon specialist has reviewed the submission and confirmed nothing is missing.",
   },
   {
     q: "What information do you need?",
@@ -34,18 +34,18 @@ const HIW_FAQ: FAQItem[] = [
   },
   {
     q: "When will I get a quote?",
-    a: "Median bind time is 48 hours from a complete submission. Complex multi-building schedules, builders risk, or anything requiring loss runs and rent rolls may take longer — we'll tell you when we'll be back to you.",
+    a: "Turnaround depends on the schedule, the carrier, and what underwriting asks for. The specialist tells you up front when to expect an indication — straightforward submissions move fast; complex schedules, builders risk, or anything needing loss runs and rent rolls take longer.",
   },
 ];
 
 export const metadata: Metadata = {
   title: "How Carbon Specialty's AI quote intake works",
   description:
-    "Carbon's conversational AI quote tool captures your real estate schedule in a 60-second intake, then routes it to a specialist for an indication within one business day. Five steps, median bind 48 hours.",
+    "Carbon's conversational AI quote tool captures your real estate schedule, then routes it to a specialist for an indication. Five steps from open-chat to quote.",
   alternates: { canonical: "/how-it-works" },
   openGraph: {
     title: "How Carbon Specialty's AI quote intake works",
-    images: [{ url: "/api/og?title=How%20it%20works&sub=AI%20quote%20intake%20%C2%B7%20Median%20bind%2048h", width: 1200, height: 630 }],
+    images: [{ url: "/api/og?title=How%20it%20works&sub=AI%20quote%20intake%20%C2%B7%20Specialist-reviewed", width: 1200, height: 630 }],
   },
 };
 
@@ -71,7 +71,7 @@ export default function HowItWorksPage() {
           eyebrow="How it works"
           headline={
             <>
-              The AI quote intake. <em style={{ fontStyle: "italic" }}>60 seconds.</em>
+              The AI quote intake. <em style={{ fontStyle: "italic" }}>Specialist-reviewed.</em>
             </>
           }
           lede="Carbon Specialty's conversational quote tool is the fastest way to put a real estate insurance submission in front of a specialist. The AI captures the schedule — asset class, address, units, year built, current carrier — and a licensed Carbon specialist comes back with an indication within one business day."
@@ -100,7 +100,7 @@ export default function HowItWorksPage() {
               ["Describe your building", "Tell Carbon about the asset in your own words. Multifamily, mixed-use, SFR portfolio, HOA, builders risk."],
               ["AI captures details", "The AI captures structured intake data — asset class, address, units, renewal date, owner contact — and confirms what's missing."],
               ["Specialist reviews", "A licensed Carbon specialist reads the submission and requests any missing artifacts (rent rolls, loss runs, dec page)."],
-              ["Quote within 48 hours", "Median bind time is 48 hours from a complete submission. You receive an indication within one business day."],
+              ["Specialist follow-up", "A licensed Carbon specialist follows up on every complete submission. The specialist tells you the indication and the timing once underwriting has read the schedule and ordered carrier quotes."],
             ].map(([title, body], i) => (
               <li
                 key={title}

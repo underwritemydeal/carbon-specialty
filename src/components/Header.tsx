@@ -52,20 +52,18 @@ export function Header({ activePath }: { activePath?: string }) {
         })}
       </nav>
       <div className="header-actions">
-        <a
-          href="tel:+15625550144"
+        <span
+          className="nav-phone"
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
             color: "var(--ink-3)",
-            textDecoration: "none",
           }}
-          className="nav-phone"
         >
-          +1 (562) 555-0144
-        </a>
+          Phone — launching soon
+        </span>
         <Link href="/quote" className="btn" style={{ padding: "12px 18px", fontSize: 13 }}>
           Get a quote
           <Icon name="arrow-right" size={14} />
