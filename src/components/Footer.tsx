@@ -33,8 +33,8 @@ const COLS: { head: string; items: { label: string; href: string }[] }[] = [
     head: "Contact",
     items: [
       { label: "Long Beach, California", href: "/contact" },
-      { label: "+1 (562) 555-0144", href: "tel:+15625550144" },
-      { label: "hello@carbonspecialty.com", href: "mailto:hello@carbonspecialty.com" },
+      { label: "Phone — launching soon", href: "/quote" },
+      { label: "Email — launching soon", href: "/quote" },
     ],
   },
 ];

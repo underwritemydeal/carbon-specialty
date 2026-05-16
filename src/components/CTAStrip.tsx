@@ -36,7 +36,7 @@ export function CTAStrip() {
             color: "var(--ink)",
           }}
         >
-          Get an indication in under <em style={{ fontStyle: "italic", color: "var(--ember)" }}>60 seconds</em>.
+          Put a real submission in front of <em style={{ fontStyle: "italic", color: "var(--ember)" }}>a specialist</em>.
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
           <button
@@ -63,7 +63,7 @@ export function CTAStrip() {
               color: "var(--ink-3)",
             }}
           >
-            Or call +1 (562) 555-0144 · Mon–Fri 8a–6p PT
+            Direct phone is launching soon
           </span>
         </div>
       </div>

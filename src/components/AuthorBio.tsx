@@ -27,7 +27,7 @@ export const AUTHORS: Record<Author["slug"], Author> = {
     name: "Anthony Miller",
     role: "Co-founder & Head of Business Development",
     yearsExperience: 30,
-    bio: "Anthony Miller has 30 years in the insurance industry, founder of Golden State Insurance Solutions, and leads Carbon's carrier partnerships and business development. His relationships across the admitted and surplus-lines markets are what let Carbon access 60+ A-rated markets in real estate insurance across Arizona, California, Colorado, Idaho, Nevada, Oregon, Texas, Utah, and Washington.",
+    bio: "Anthony Miller has 30 years in the insurance industry, founder of Golden State Insurance Solutions, and leads Carbon's carrier partnerships and business development. His relationships across the admitted and surplus-lines markets are what give Carbon access to A-rated real estate insurance markets across Arizona, California, Colorado, Idaho, Nevada, Oregon, Texas, Utah, and Washington.",
     expertise: [
       "Real estate insurance distribution",
       "Carrier partnerships",

@@ -39,7 +39,7 @@ export function CarrierBar() {
             letterSpacing: "-0.01em",
           }}
         >
-          60+ A-rated markets — admitted, surplus lines, and program business — placed across the Western United States.
+          A-rated admitted, surplus-lines, and program-business carriers — the short list for any given submission is determined by the schedule.
         </p>
       </div>
     </section>

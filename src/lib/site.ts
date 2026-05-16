@@ -3,9 +3,12 @@ export const SITE = {
   legalName: "Carbon Specialty Insurance Services",
   domain: "carbonspecialty.com",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://carbonspecialty.com",
-  phone: "+1-562-555-0144",
-  phoneDisplay: "+1 (562) 555-0144",
-  email: "hello@carbonspecialty.com",
+  // Sprint C.S.1.1 — public phone and email are placeholders until launch.
+  // Do NOT emit these into JSON-LD, footer links, or other surfaces. Helpers
+  // in `schema.ts` already omit them; new surfaces should keep that rule.
+  phone: null,
+  phoneDisplay: null,
+  email: null,
   street: "Long Beach, California",
   city: "Long Beach",
   region: "CA",

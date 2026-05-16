@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Icon } from "./Icon";
 
 export function Confirmation({ ref }: { ref?: string }) {
   const reference = ref ?? `CSP-${Math.floor(Math.random() * 9000 + 1000)}-${new Date().getFullYear()}`;
@@ -53,11 +52,8 @@ export function Confirmation({ ref }: { ref?: string }) {
             color: "var(--ink)",
           }}
         >
-          Thank you. We&apos;ll
-          <br />
-          be in touch <em style={{ fontStyle: "italic" }}>within
-          <br />
-          one business day</em>.
+          Thank you. A <em style={{ fontStyle: "italic" }}>Carbon specialist</em>
+          <br />will follow up.
         </h1>
 
         <p
@@ -79,9 +75,6 @@ export function Confirmation({ ref }: { ref?: string }) {
           <Link href="/" className="btn btn-secondary">
             ← Back to home
           </Link>
-          <a href="tel:+15625550144" className="btn">
-            Call us now <Icon name="arrow-right" size={14} />
-          </a>
         </div>
       </div>
     </section>

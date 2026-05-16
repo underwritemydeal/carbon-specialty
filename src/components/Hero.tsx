@@ -149,7 +149,7 @@ export function Hero() {
         >
           Carbon Specialty writes real estate insurance for multifamily, mixed-use, SFR portfolios,
           HOAs, and apartment buildings — California-led, Western United States–licensed, placed
-          across 60+ A-rated markets.
+          across admitted, surplus-lines, and program-business carriers.
         </p>
 
         <div
@@ -193,7 +193,7 @@ export function Hero() {
                 color: "var(--ink-3)",
               }}
             >
-              60-second intake
+              Specialist-reviewed
             </span>
           </div>
 
@@ -325,9 +325,9 @@ export function Hero() {
         >
           {[
             ["Specialty", "Real estate"],
-            ["Carriers", "60+ A-rated"],
-            ["Median bind", "48 hours"],
-            ["Powered by", "Covr"],
+            ["Geography", "Western US"],
+            ["Workflow", "AI-assisted"],
+            ["Method", "Specialist-reviewed"],
           ].map(([k, v]) => (
             <div key={k} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span

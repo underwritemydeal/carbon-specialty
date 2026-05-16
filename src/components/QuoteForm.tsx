@@ -241,7 +241,7 @@ export function QuoteForm() {
               label="Phone"
               value={data.phone}
               onChange={(v) => update("phone", v)}
-              placeholder="+1 (562) 555-0144"
+              placeholder="(area) ___-____"
               type="tel"
             />
           </div>
@@ -378,7 +378,7 @@ export function QuoteForm() {
               color: "var(--ink-3)",
             }}
           >
-            Median bind: 48h from complete submission
+            A specialist follows up on every complete submission
           </span>
           {step < 2 ? (
             <button className="btn" type="button" onClick={advance}>
