@@ -379,7 +379,9 @@ select:focus-visible,
    pretty for body. Smart quotes are emitted by content authors; CSS only
    tunes layout. */
 h1, h2, h3 { text-wrap: balance; }
-p { text-wrap: pretty; hyphens: auto; }
+/* Hyphens: manual — let the typesetter pick break points with &shy;, not
+   the browser. Editorial publications never ship auto-hyphenation. */
+p { text-wrap: pretty; hyphens: manual; }
 
 /* 12-column editorial grid. Columns use minmax(0, 1fr) so a long word in
    one cell can't blow out the rest of the row. `.col-N` sets end only via

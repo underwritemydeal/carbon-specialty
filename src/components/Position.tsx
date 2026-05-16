@@ -40,7 +40,7 @@ export function Position() {
                 color: "var(--ember)",
               }}
             >
-              03 — Position
+              02 — Position
             </span>
           </div>
           <div className="col-5">
@@ -254,7 +254,7 @@ export function Position() {
               textAlign: "right",
             }}
           >
-            03 / 06
+            02 / 06
           </span>
         </div>
       </div>
