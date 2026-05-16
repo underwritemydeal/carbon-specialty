@@ -1,43 +1,25 @@
 import Link from "next/link";
 import { Wordmark } from "./Wordmark";
+import { PhotoSlot } from "./PhotoSlot";
 
-const COLS: { head: string; items: { label: string; href: string }[] }[] = [
-  {
-    head: "What we write",
-    items: [
-      { label: "Multifamily", href: "/what-we-write#multifamily" },
-      { label: "Mixed-use", href: "/what-we-write#mixed-use" },
-      { label: "SFR portfolios", href: "/what-we-write#sfr" },
-      { label: "Condo HOAs", href: "/what-we-write#hoa" },
-      { label: "Builders risk", href: "/what-we-write#builders-risk" },
-    ],
-  },
-  {
-    head: "Service",
-    items: [
-      { label: "Get a quote", href: "/quote" },
-      { label: "How it works", href: "/how-it-works" },
-      { label: "Contact", href: "/contact" },
-    ],
-  },
-  {
-    head: "Agency",
-    items: [
-      { label: "About", href: "/about" },
-      { label: "Insights", href: "/insights" },
-      { label: "Privacy", href: "/privacy" },
-      { label: "Terms", href: "/terms" },
-    ],
-  },
-  {
-    head: "Contact",
-    items: [
-      { label: "Long Beach, California", href: "/contact" },
-      { label: "Phone — launching soon", href: "/quote" },
-      { label: "Email — launching soon", href: "/quote" },
-    ],
-  },
-];
+const COLOPHON = {
+  brand:
+    "Carbon Specialty is the publication and brand of Carbon Specialty Insurance Services — an independent insurance brokerage focused on real estate and apartment building insurance across California and the Western United States.",
+  services: [
+    { label: "What we write", href: "/what-we-write" },
+    { label: "How it works", href: "/how-it-works" },
+    { label: "Get a quote", href: "/quote" },
+  ],
+  agency: [
+    { label: "About", href: "/about" },
+    { label: "Insights", href: "/insights" },
+    { label: "Contact", href: "/contact" },
+  ],
+  legal: [
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
+  ],
+};
 
 export function Footer() {
   return (
@@ -45,110 +27,202 @@ export function Footer() {
       style={{
         background: "var(--ink)",
         color: "var(--paper)",
-        padding: "96px var(--gutter) 32px",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{ maxWidth: "var(--maxw)", margin: "0 auto" }}>
+      {/* Top photographic band — Slot 5 placeholder */}
+      <div
+        aria-hidden
+        style={{
+          position: "relative",
+          height: "40vh",
+          minHeight: 280,
+          borderBottom: "1px solid var(--paper-3)",
+          overflow: "hidden",
+        }}
+      >
+        <PhotoSlot
+          alt="Wide-angle California urban skyline at dusk, mid-rise apartment buildings and palm trees silhouetted against the sky."
+          caption="Dusk · Western Skyline · 05"
+          inverted
+          fill
+        />
+      </div>
+
+      {/* Colophon */}
+      <div
+        className="container"
+        style={{
+          paddingBlock: "96px 32px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 64,
+        }}
+      >
+        {/* Wordmark + brand statement */}
         <div
-          className="footer-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.4fr repeat(4, 1fr)",
-            gap: 32,
-            marginBottom: 80,
-          }}
+          className="grid-12 footer-top"
+          style={{ alignItems: "flex-start", rowGap: 32 }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div className="col-5">
             <Wordmark size="md" inverted />
-            <p
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-display)",
-                fontStyle: "italic",
-                fontSize: 22,
-                lineHeight: 1.3,
-                color: "var(--paper-2)",
-                maxWidth: 360,
-              }}
-            >
-              California-based. Serving real estate and apartment building owners across the Western United States.
-            </p>
           </div>
-          {COLS.map((c) => (
-            <div key={c.head} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--paper-3)",
-                }}
-              >
-                {c.head}
-              </span>
-              {c.items.map((i) => (
-                <Link
-                  key={i.label}
-                  href={i.href}
-                  style={{
-                    fontFamily: "var(--font-body)",
-                    fontSize: 14,
-                    color: "var(--paper)",
-                    textDecoration: "none",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {i.label}
-                </Link>
-              ))}
-            </div>
-          ))}
+          <p
+            className="col-6 start-7"
+            style={{
+              margin: 0,
+              fontFamily: "var(--font-display)",
+              fontStyle: "italic",
+              fontSize: "clamp(20px, 2.2vw, 28px)",
+              lineHeight: 1.3,
+              color: "var(--paper-2)",
+              textWrap: "balance",
+            }}
+          >
+            {COLOPHON.brand}
+          </p>
         </div>
 
+        <div className="rule" style={{ background: "var(--paper-3)" }} />
+
+        {/* Three columns + licensed footer */}
+        <div className="grid-12 footer-cols" style={{ rowGap: 32, alignItems: "flex-start" }}>
+          <FooterCol head="Services" items={COLOPHON.services} className="col-3" />
+          <FooterCol head="Agency" items={COLOPHON.agency} className="col-3" />
+          <FooterCol head="Legal" items={COLOPHON.legal} className="col-2" />
+          <div className="col-4" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: "var(--paper-3)",
+              }}
+            >
+              Licensed
+            </span>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                letterSpacing: "0.18em",
+                lineHeight: 1.7,
+                color: "var(--paper-2)",
+              }}
+            >
+              AZ · CA · CO · ID · NV · OR · TX · UT · WA
+            </span>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "var(--paper-3)",
+              }}
+            >
+              Phone &amp; email — launching soon
+            </span>
+          </div>
+        </div>
+
+        <div className="rule" style={{ background: "var(--paper-3)" }} />
+
+        {/* Print credit + page number */}
         <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            paddingTop: 28,
-            borderTop: "1px solid var(--paper-3)",
-            flexWrap: "wrap",
-            gap: 16,
-          }}
+          className="grid-12 footer-credit"
+          style={{ alignItems: "baseline", rowGap: 16 }}
         >
           <span
+            className="col-8"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              letterSpacing: "0.12em",
+              letterSpacing: "0.16em",
               textTransform: "uppercase",
               color: "var(--paper-3)",
             }}
           >
-            © {new Date().getFullYear()} Carbon Specialty Insurance Services
+            © {new Date().getFullYear()} Carbon Specialty Insurance Services. Set in Bodoni
+            Moda and IBM Plex. Built {new Date().getFullYear()} by the agency.
           </span>
           <span
+            className="col-4"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 11,
-              letterSpacing: "0.12em",
+              letterSpacing: "0.2em",
               textTransform: "uppercase",
-              color: "var(--paper-3)",
+              color: "var(--paper-2)",
+              textAlign: "right",
             }}
           >
-            Licensed across AZ · CA · CO · ID · NV · OR · TX · UT · WA
+            06 / 06 · End
           </span>
         </div>
       </div>
+
       <style>{`
         @media (max-width: 900px) {
-          .footer-grid { grid-template-columns: 1fr 1fr !important; }
-        }
-        @media (max-width: 480px) {
-          .footer-grid { grid-template-columns: 1fr !important; }
+          .footer-top .col-5,
+          .footer-top .col-6 { grid-column: 1 / -1 !important; }
+          .footer-cols .col-2,
+          .footer-cols .col-3,
+          .footer-cols .col-4 { grid-column: 1 / -1 !important; }
+          .footer-credit .col-4,
+          .footer-credit .col-8 { grid-column: 1 / -1 !important; text-align: left !important; }
         }
       `}</style>
     </footer>
+  );
+}
+
+function FooterCol({
+  head,
+  items,
+  className,
+}: {
+  head: string;
+  items: { label: string; href: string }[];
+  className: string;
+}) {
+  return (
+    <div className={className} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <span
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          letterSpacing: "0.22em",
+          textTransform: "uppercase",
+          color: "var(--paper-3)",
+        }}
+      >
+        {head}
+      </span>
+      {items.map((i) => (
+        <Link
+          key={i.label}
+          href={i.href}
+          style={{
+            fontFamily: "var(--font-body)",
+            fontSize: 15,
+            color: "var(--paper)",
+            textDecoration: "none",
+            lineHeight: 1.4,
+            borderBottom: "1px solid transparent",
+            transition: "border-color var(--dur-fast) var(--ease)",
+            alignSelf: "flex-start",
+          }}
+          className="footer-link"
+        >
+          {i.label}
+        </Link>
+      ))}
+      <style>{`
+        .footer-link:hover { border-bottom-color: var(--ember); }
+      `}</style>
+    </div>
   );
 }

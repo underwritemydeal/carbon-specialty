@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@vercel/og": "^0.11.1",
+    "motion": "^12.38.0",
     "next": "16.2.6",
     "posthog-js": "^1.373.5",
     "posthog-node": "^5.34.2",

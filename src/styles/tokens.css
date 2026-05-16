@@ -215,6 +215,10 @@
   gap: 14px;
   color: var(--ink);
 }
+.wordmark.align-left { align-items: flex-start; }
+.wordmark.align-left .wm-rule { width: 64px; }
+.wordmark.align-left.md .wm-rule { width: 88px; }
+.wordmark.align-left.lg .wm-rule { width: 120px; }
 .wm-name {
   font-family: var(--font-wordmark);
   font-weight: 400;
@@ -364,4 +368,166 @@ select:focus-visible,
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* =========================================================================
+   EDITORIAL PRIMITIVES — sprint C.S.1.2.
+   Asymmetric grid, drop caps, marginalia, pagination, atmosphere.
+   ========================================================================= */
+
+/* Defaults applied across the document — wrap balance for display headlines,
+   pretty for body. Smart quotes are emitted by content authors; CSS only
+   tunes layout. */
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; hyphens: auto; }
+
+/* 12-column editorial grid. Columns use minmax(0, 1fr) so a long word in
+   one cell can't blow out the rest of the row. `.col-N` sets end only via
+   `grid-column-end: span N`, so it composes safely with `.start-N` (which
+   sets `grid-column-start`); using the `grid-column` shorthand on the
+   span class would override the start. */
+.grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: var(--s-5);
+}
+.col-1  { grid-column-end: span 1; }
+.col-2  { grid-column-end: span 2; }
+.col-3  { grid-column-end: span 3; }
+.col-4  { grid-column-end: span 4; }
+.col-5  { grid-column-end: span 5; }
+.col-6  { grid-column-end: span 6; }
+.col-7  { grid-column-end: span 7; }
+.col-8  { grid-column-end: span 8; }
+.col-9  { grid-column-end: span 9; }
+.col-10 { grid-column-end: span 10; }
+.col-11 { grid-column-end: span 11; }
+.col-12 { grid-column: 1 / -1; }
+.start-1  { grid-column-start: 1; }
+.start-2  { grid-column-start: 2; }
+.start-3  { grid-column-start: 3; }
+.start-4  { grid-column-start: 4; }
+.start-5  { grid-column-start: 5; }
+.start-6  { grid-column-start: 6; }
+.start-7  { grid-column-start: 7; }
+.start-8  { grid-column-start: 8; }
+
+/* Full-bleed primitive — escape the gutter, span the viewport, used inside
+   a centered container. */
+.full-bleed {
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Container — gutter + max-width, common to every editorial section */
+.container {
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* Drop cap — Bodoni Moda italic on the first letter of the host paragraph.
+   `color: inherit` so it works on both paper and ink grounds without the
+   caller needing to opt into a darker/lighter variant. */
+.with-drop-cap > p:first-of-type::first-letter,
+.drop-cap::first-letter {
+  font-family: var(--font-wordmark);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 4.2em;
+  line-height: 0.92;
+  float: left;
+  margin: 0.08em 0.12em 0 0;
+  color: inherit;
+  font-variation-settings: "opsz" 96;
+}
+
+/* Mono pagination — magazine corner number */
+.page-no {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: var(--tk-mono);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.page-no.inverted { color: var(--paper-3); }
+
+/* Marginalia — small mono caption in the right margin */
+.marginalia {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-left: 1px solid var(--ink-3);
+  padding-left: var(--s-3);
+  max-width: 200px;
+}
+
+/* Hairline section boundary, full-bleed */
+.rule-bleed {
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+  height: 1px;
+  background: var(--ink);
+}
+
+/* Paper grain texture — subtle noise overlay, applied to any element via
+   the ::after pseudo. Use sparingly. */
+.paper-grain {
+  position: relative;
+  isolation: isolate;
+}
+.paper-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* Pull-quote rotated 90deg, used in the gutter of inversion sections */
+.pull-quote-vertical {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--paper-3);
+  white-space: nowrap;
+}
+
+/* Editorial section padding — top + bottom breathing room */
+.section-pad   { padding-block: 96px; }
+.section-pad-lg { padding-block: 160px; }
+.section-pad-xl { padding-block: 200px; }
+
+/* Visually hidden helper */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+/* Mobile collapse — asymmetric grids fold to single column */
+@media (max-width: 768px) {
+  .grid-12 { grid-template-columns: 1fr; column-gap: 0; }
+  .col-1, .col-2, .col-3, .col-4, .col-5, .col-6,
+  .col-7, .col-8, .col-9, .col-10, .col-11, .col-12 { grid-column: 1 / -1; }
+  .start-1, .start-2, .start-3, .start-4,
+  .start-5, .start-6, .start-7, .start-8 { grid-column-start: 1; }
+  .marginalia { display: none; }   /* no room on mobile */
+  .pull-quote-vertical { display: none; }
+  .section-pad-xl { padding-block: 120px; }
+  .section-pad-lg { padding-block: 96px; }
 }
