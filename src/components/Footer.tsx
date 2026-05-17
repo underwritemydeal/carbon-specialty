@@ -4,7 +4,7 @@ import { PhotoSlot } from "./PhotoSlot";
 
 const COLOPHON = {
   brand:
-    "Carbon Specialty is the publication and brand of Carbon Specialty Insurance Services — an independent insurance brokerage focused on real estate and apartment building insurance across California and the Western United States.",
+    "California-based real estate specialty. Selective placements available nationally through wholesale and program partners.",
   services: [
     { label: "What we write", href: "/what-we-write" },
     { label: "How it works", href: "/how-it-works" },
@@ -88,44 +88,9 @@ export function Footer() {
 
         {/* Three columns + licensed footer */}
         <div className="grid-12 footer-cols" style={{ rowGap: 32, alignItems: "flex-start" }}>
-          <FooterCol head="Services" items={COLOPHON.services} className="col-3" />
-          <FooterCol head="Agency" items={COLOPHON.agency} className="col-3" />
-          <FooterCol head="Legal" items={COLOPHON.legal} className="col-2" />
-          <div className="col-4" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: "var(--paper-3)",
-              }}
-            >
-              Licensed
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 13,
-                letterSpacing: "0.18em",
-                lineHeight: 1.7,
-                color: "var(--paper-2)",
-              }}
-            >
-              AZ · CA · CO · ID · NV · OR · TX · UT · WA
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "var(--paper-3)",
-              }}
-            >
-              Phone &amp; email — launching soon
-            </span>
-          </div>
+          <FooterCol head="Services" items={COLOPHON.services} className="col-4" />
+          <FooterCol head="Agency" items={COLOPHON.agency} className="col-4" />
+          <FooterCol head="Legal" items={COLOPHON.legal} className="col-4" />
         </div>
 
         <div className="rule" style={{ background: "var(--paper-3)" }} />

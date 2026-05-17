@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { FadeUp } from "./motion-primitives";
 import { ASSET_CLASSES } from "@/lib/asset-classes";
@@ -5,23 +7,28 @@ import { ASSET_CLASSES } from "@/lib/asset-classes";
 export { ASSET_CLASSES };
 
 /**
- * Asset class grid — real editorial composition, not a uniform card strip.
+ * Asset class grid — editorial composition with a right-gutter pull-quote.
  *
- * Layout:
- *   Row 1: feature card (cols 1–7) + supporting card (cols 8–12)
- *   Row 2: thin column (1–4) + thin column (5–8) + thin column (9–12)
- *   Row 3: wide card (cols 1–8) + graphic block (cols 9–12)
- * That's deliberately uneven — wide / narrow / narrow / narrow / wide / graphic.
- * The graphic block is a pine numeral on paper, taking the place of a photo
- * slot while photography is unavailable.
+ * Desktop layout (12-col):
+ *   Cards take cols 1–10 in three rows with deliberate variation. The
+ *   pull-quote sits in cols 11–12, spans all three card rows, and is
+ *   vertically centered alongside them.
+ *
+ * Mobile (≤480px): the pull-quote moves above the cards as a horizontal
+ * full-width treatment with hairline rules above and below.
  */
-const LAYOUT: Array<{ slug: typeof ASSET_CLASSES[number]["slug"]; col: string; height?: number; featured?: boolean }> = [
-  { slug: "multifamily", col: "col-7 start-1", height: 420, featured: true },
-  { slug: "mixed-use", col: "col-5 start-8", height: 420 },
-  { slug: "sfr", col: "col-4 start-1", height: 280 },
-  { slug: "hoa", col: "col-4 start-5", height: 280 },
-  { slug: "small-commercial", col: "col-4 start-9", height: 280 },
-  { slug: "builders-risk", col: "col-8 start-1", height: 360, featured: true },
+const LAYOUT: Array<{
+  slug: typeof ASSET_CLASSES[number]["slug"];
+  col: string;
+  height?: number;
+  featured?: boolean;
+}> = [
+  { slug: "multifamily", col: "col-6 start-1", height: 360, featured: true },
+  { slug: "mixed-use", col: "col-4 start-7", height: 360 },
+  { slug: "sfr", col: "col-4 start-1", height: 240 },
+  { slug: "hoa", col: "col-3 start-5", height: 240 },
+  { slug: "small-commercial", col: "col-3 start-8", height: 240 },
+  { slug: "builders-risk", col: "col-6 start-1", height: 300, featured: true },
 ];
 
 export function AssetClassesGrid() {
@@ -35,7 +42,7 @@ export function AssetClassesGrid() {
       }}
     >
       <div className="container">
-        {/* Section masthead — eyebrow + display headline */}
+        {/* Section masthead */}
         <FadeUp className="grid-12">
           <div className="col-12">
             <span
@@ -74,125 +81,50 @@ export function AssetClassesGrid() {
 
         <div className="rule" style={{ marginBlock: 80 }} />
 
-        {/* Grid of asset class cards in deliberate uneven composition */}
-        <div className="grid-12 ac-grid" style={{ rowGap: 32 }}>
+        {/* MOBILE pull-quote — horizontal full-width above the cards.
+            Hidden on desktop. */}
+        <PullQuote variant="mobile" />
+
+        {/* Grid: cards in cols 1-10, pull-quote in cols 11-12 spanning rows */}
+        <div className="grid-12 ac-grid" style={{ rowGap: 32, alignItems: "stretch" }}>
           {LAYOUT.map((spot, i) => {
             const item = ASSET_CLASSES.find((a) => a.slug === spot.slug)!;
-            const isWide = spot.featured;
+            const featured = spot.featured;
             return (
               <FadeUp key={spot.slug} className={spot.col} delay={i * 0.04}>
                 <article
-                  id={spot.slug}
+                  id={item.slug}
+                  className={`ac-card ${featured ? "ac-card--featured" : ""}`}
+                  data-featured={featured ? "true" : "false"}
                   style={{
-                    background: isWide ? "var(--ink)" : "var(--paper-2)",
-                    color: isWide ? "var(--paper)" : "var(--ink)",
-                    padding: isWide ? "40px 36px" : "28px 24px",
                     minHeight: spot.height,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 18,
-                    height: "100%",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                      borderBottom: `1px solid ${isWide ? "var(--paper-3)" : "var(--ink)"}`,
-                      paddingBottom: 14,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: isWide ? 12 : 11,
-                        letterSpacing: "0.22em",
-                        textTransform: "uppercase",
-                        color: isWide ? "var(--ember-tint)" : "var(--ember)",
-                      }}
-                    >
-                      {item.n} — Class
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 10,
-                        letterSpacing: "0.18em",
-                        textTransform: "uppercase",
-                        color: isWide ? "var(--paper-3)" : "var(--ink-3)",
-                      }}
-                    >
-                      / 06
-                    </span>
+                  {/* The ink-fill layer — animates L→R on hover.
+                      Featured cards already have ink background, so no layer. */}
+                  {!featured && <span className="ac-card__fill" aria-hidden />}
+                  <div className="ac-card__inner">
+                    <div className="ac-card__head">
+                      <span className="ac-card__eyebrow">{item.n} — Class</span>
+                      <span className="ac-card__index">/ 06</span>
+                    </div>
+                    <h3 className="ac-card__title">{item.name}</h3>
+                    <p className="ac-card__body">{item.body}</p>
+                    <Link href={`/what-we-write#${item.slug}`} className="ac-card__cta">
+                      See coverage →
+                    </Link>
                   </div>
-
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 400,
-                      fontSize: isWide ? "clamp(40px, 4.5vw, 56px)" : "clamp(24px, 2.4vw, 32px)",
-                      lineHeight: 1.0,
-                      letterSpacing: "-0.025em",
-                      color: isWide ? "var(--paper)" : "var(--ink)",
-                      textWrap: "balance",
-                    }}
-                  >
-                    {item.name}
-                  </h3>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontFamily: "var(--font-body)",
-                      fontSize: isWide ? 17 : 14,
-                      lineHeight: 1.6,
-                      color: isWide ? "var(--paper-2)" : "var(--ink-2)",
-                      textWrap: "pretty",
-                      maxWidth: 480,
-                    }}
-                  >
-                    {item.body}
-                  </p>
-
-                  <Link
-                    href={`/what-we-write#${item.slug}`}
-                    style={{
-                      marginTop: "auto",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      letterSpacing: "0.18em",
-                      textTransform: "uppercase",
-                      color: isWide ? "var(--paper)" : "var(--ink)",
-                      textDecoration: "none",
-                      borderBottom: `1px solid ${isWide ? "var(--paper)" : "var(--ink)"}`,
-                      paddingBottom: 2,
-                      alignSelf: "flex-start",
-                    }}
-                  >
-                    See coverage →
-                  </Link>
                 </article>
               </FadeUp>
             );
           })}
 
-          {/* Graphic block — pine field with massive mono "06", takes the
-              place of a photo slot. Anchors the bottom-right corner of the
-              composition with a single color stamp. */}
-          <FadeUp className="col-4 start-9" delay={0.32}>
-            <div
-              style={{
-                background: "var(--ember)",
-                color: "var(--paper)",
-                minHeight: 360,
-                display: "grid",
-                gridTemplateRows: "auto 1fr auto",
-                padding: "28px 24px",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
+          {/* DESKTOP pull-quote — right gutter, cols 11-12, spans all card rows */}
+          <PullQuote variant="desktop" />
+
+          {/* Graphic "06" block — sits to the right of builders-risk on row 3 */}
+          <FadeUp className="col-4 start-7 ac-graphic" delay={0.32}>
+            <div className="ac-graphic-block">
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
@@ -236,12 +168,193 @@ export function AssetClassesGrid() {
           </FadeUp>
         </div>
       </div>
+
       <style>{`
-        @media (max-width: 900px) {
-          .ac-grid > article { min-height: auto !important; }
+        /* ====== Card baseline ====== */
+        .ac-card {
+          position: relative;
+          overflow: hidden;
+          background: var(--paper-2);
+          color: var(--ink);
+          padding: 28px 24px;
+          height: 100%;
+          display: block;
+        }
+        .ac-card--featured {
+          background: var(--ink);
+          color: var(--paper);
+          padding: 40px 36px;
+        }
+        .ac-card__inner {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          height: 100%;
+        }
+        .ac-card__head {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          border-bottom: 1px solid currentColor;
+          padding-bottom: 14px;
+          color: var(--ink);
+        }
+        .ac-card--featured .ac-card__head { border-bottom-color: var(--paper-3); color: var(--paper); }
+        .ac-card__eyebrow {
+          font-family: var(--font-mono);
+          font-size: 11px;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          color: var(--ember);
+        }
+        .ac-card--featured .ac-card__eyebrow { color: var(--ember-tint); font-size: 12px; }
+        .ac-card__index {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: var(--ink-3);
+        }
+        .ac-card--featured .ac-card__index { color: var(--paper-3); }
+        .ac-card__title {
+          margin: 0;
+          font-family: var(--font-display);
+          font-weight: 400;
+          font-size: clamp(22px, 2.4vw, 30px);
+          line-height: 1.05;
+          letter-spacing: -0.022em;
+          color: var(--ink);
+          text-wrap: balance;
+        }
+        .ac-card--featured .ac-card__title {
+          font-size: clamp(36px, 4vw, 48px);
+          color: var(--paper);
+        }
+        .ac-card__body {
+          margin: 0;
+          font-family: var(--font-body);
+          font-size: 14px;
+          line-height: 1.6;
+          color: var(--ink-2);
+          text-wrap: pretty;
+          max-width: 440px;
+        }
+        .ac-card--featured .ac-card__body {
+          font-size: 17px;
+          color: var(--paper-2);
+        }
+        .ac-card__cta {
+          margin-top: auto;
+          align-self: flex-start;
+          font-family: var(--font-mono);
+          font-size: 11px;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          color: var(--ink);
+          text-decoration: none;
+          border-bottom: 1px solid var(--ink);
+          padding-bottom: 2px;
+        }
+        .ac-card--featured .ac-card__cta { color: var(--paper); border-bottom-color: var(--paper); }
+
+        /* ====== Ink L→R fill hover on non-featured cards ====== */
+        .ac-card__fill {
+          position: absolute;
+          inset: 0;
+          background: var(--ink);
+          transform-origin: left center;
+          transform: scaleX(0);
+          transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+          z-index: 1;
+          pointer-events: none;
+        }
+        .ac-card:hover .ac-card__fill { transform: scaleX(1); }
+        .ac-card:hover .ac-card__title,
+        .ac-card:hover .ac-card__body,
+        .ac-card:hover .ac-card__cta { color: var(--paper); transition: color 200ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+        .ac-card:hover .ac-card__head { border-bottom-color: var(--paper-3); transition: border-color 200ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+        .ac-card:hover .ac-card__eyebrow { color: var(--ember-tint); }
+        .ac-card:hover .ac-card__index   { color: var(--paper-3); }
+        .ac-card:hover .ac-card__cta     { border-bottom-color: var(--paper); }
+        @media (prefers-reduced-motion: reduce) {
+          .ac-card__fill { transition: none; }
+          .ac-card:hover .ac-card__fill { transform: none; }
+          .ac-card:hover { opacity: 0.85; transition: opacity 120ms linear; }
+          .ac-card:hover .ac-card__title,
+          .ac-card:hover .ac-card__body,
+          .ac-card:hover .ac-card__cta { color: inherit !important; }
+          .ac-card:hover .ac-card__head { border-color: currentColor !important; }
+        }
+
+        /* ====== Graphic "06" block — paper-on-pine, full row 3 right side ====== */
+        .ac-graphic-block {
+          background: var(--ember);
+          color: var(--paper);
+          min-height: 300px;
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          padding: 28px 24px;
+          height: 100%;
+        }
+
+        /* ====== Pull-quote ====== */
+        .pull-quote {
+          font-family: var(--font-mono);
+          font-size: var(--t-sm);
+          line-height: 1.4;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          color: var(--ink);
+        }
+        .pull-quote--desktop {
+          grid-column: 11 / span 2;
+          grid-row: 1 / span 3;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: flex-start;
+          padding: 24px 0;
+        }
+        .pull-quote--desktop .pull-quote__inner {
+          padding-block: 24px;
+          border-top: 1px solid var(--ink);
+          border-bottom: 1px solid var(--ink);
+        }
+        .pull-quote--mobile {
+          display: none;
+          padding-block: 24px;
+          border-top: 1px solid var(--ink);
+          border-bottom: 1px solid var(--ink);
+          margin-bottom: 32px;
+          text-align: center;
+        }
+        .pull-quote__inner > span {
+          display: block;
+        }
+
+        /* ====== Mobile collapse ====== */
+        @media (max-width: 768px) {
+          .pull-quote--desktop { display: none; }
+          .pull-quote--mobile  { display: block; }
+          .ac-graphic { grid-column: 1 / -1 !important; }
         }
       `}</style>
     </section>
+  );
+}
+
+function PullQuote({ variant }: { variant: "desktop" | "mobile" }) {
+  const cls = variant === "desktop" ? "pull-quote pull-quote--desktop" : "pull-quote pull-quote--mobile";
+  return (
+    <div className={cls} aria-hidden>
+      <div className="pull-quote__inner">
+        <span>“Five-unit walk-ups</span>
+        <span>to billion-dollar</span>
+        <span>schedules.”</span>
+      </div>
+    </div>
   );
 }
 

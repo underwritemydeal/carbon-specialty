@@ -3,26 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { Wordmark } from "./Wordmark";
-import { PhotoSlot } from "./PhotoSlot";
+import { HeroVideo } from "./HeroVideo";
 import { useChat } from "./ChatProvider";
 import { track } from "@/lib/analytics";
 
 const PLACEHOLDERS = [
   "24 units in Long Beach, 1962…",
-  "Mixed-use in Oakland, need EQ…",
-  "Builders risk, ground-up multifamily.",
-  "SFR portfolio · 80 doors · Phoenix.",
-  "Renewal on a 6-building schedule, May.",
+  "Mixed-use, ground-floor retail, Pasadena…",
+  "Builders risk, ADU project, San Diego…",
   "10-unit walk-up, recent fire. Help.",
-];
-
-const SUGGESTIONS = ["Speak to someone", "Open the form", "Tell Carbon about my building"];
-
-const HEADLINES = [
-  { lead: "Insurance for the buildings", accent: "California", trail: "can’t afford to lose." },
-  { lead: "Insurance for the buildings", accent: "the West", trail: "can’t afford to lose." },
+  "Five-building portfolio, scattered-site SFR…",
 ];
 
 const EASE = [0.2, 0.7, 0.2, 1] as const;
@@ -32,29 +24,19 @@ export function Hero() {
   const { open: onOpenChat } = useChat();
   const [input, setInput] = useState("");
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
-  const [headlineIdx, setHeadlineIdx] = useState(0);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
 
   useEffect(() => {
     if (focused || input) return;
-    const id = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDERS.length), 4000);
+    const id = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDERS.length), 3500);
     return () => clearInterval(id);
   }, [focused, input]);
-
-  useEffect(() => {
-    const id = setInterval(() => setHeadlineIdx((i) => (i + 1) % HEADLINES.length), 8000);
-    return () => clearInterval(id);
-  }, []);
 
   const submit = (msg?: string) => {
     const text = (msg ?? input).trim();
     track("cs_hero_input_submit", { has_text: Boolean(text), suggestion: msg ?? null });
-    if (text === "Open the form") {
-      router.push("/quote");
-      return;
-    }
     onOpenChat(text || undefined);
     setInput("");
   };
@@ -65,8 +47,6 @@ export function Hero() {
       submit();
     }
   };
-
-  const current = HEADLINES[headlineIdx];
 
   return (
     <section
@@ -89,7 +69,7 @@ export function Hero() {
           gap: 32,
         }}
       >
-        {/* === HEADER === wordmark left / nav center / Get a quote right */}
+        {/* === HEADER === wordmark / nav / Get a quote */}
         <header
           className="hero-header"
           style={{
@@ -114,27 +94,14 @@ export function Hero() {
               <Link
                 key={l.href}
                 href={l.href}
-                className="hero-nav-link"
-                style={{
-                  fontFamily: "var(--font-body)",
-                  fontSize: 14,
-                  color: "var(--ink)",
-                  textDecoration: "none",
-                  borderBottom: "1px solid transparent",
-                  paddingBottom: 2,
-                  transition: "border-color var(--dur-fast) var(--ease)",
-                }}
+                className="nav-link"
               >
-                {l.label}
+                <span>{l.label}</span>
               </Link>
             ))}
           </nav>
 
-          <Link
-            href="/quote"
-            className="btn"
-            style={{ padding: "10px 18px", fontSize: 13 }}
-          >
+          <Link href="/quote" className="btn" style={{ padding: "10px 18px", fontSize: 13 }}>
             Get a quote
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <line x1="4" y1="12" x2="20" y2="12" />
@@ -143,10 +110,9 @@ export function Hero() {
           </Link>
         </header>
 
-        {/* Hairline rule under header */}
         <div aria-hidden style={{ height: 1, background: "var(--ink)" }} />
 
-        {/* === EYEBROW === section index + status */}
+        {/* === EYEBROW === section index + live status (pulse dot left of CARBON) */}
         <div className="grid-12" style={{ alignItems: "baseline" }}>
           <span
             className="col-6"
@@ -161,11 +127,11 @@ export function Hero() {
             00 — Get a quote
           </span>
           <span
-            className="col-6"
+            className="col-6 hero-status"
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
               justifyContent: "flex-end",
               fontFamily: "var(--font-mono)",
               fontSize: 10,
@@ -174,11 +140,12 @@ export function Hero() {
               color: "var(--ink-3)",
             }}
           >
-            <PulseDot /> Carbon · online · responding in seconds
+            <PulseDot />
+            <span>Carbon · online · responding in seconds</span>
           </span>
         </div>
 
-        {/* === HEADLINE === cols 1-9 */}
+        {/* === HEADLINE === forced 2-line, italic pine "home." on its own line */}
         <motion.h1
           id="hero-headline"
           className="hero-h1"
@@ -186,11 +153,11 @@ export function Hero() {
             margin: 0,
             fontFamily: "var(--font-display)",
             fontWeight: 400,
-            fontSize: "clamp(44px, 6vw, 88px)",
-            lineHeight: 1.02,
+            fontSize: "clamp(56px, 8.5vw, 120px)",
+            lineHeight: 1.04,
             letterSpacing: "-0.025em",
             color: "var(--ink)",
-            maxWidth: "16ch",
+            maxWidth: "14ch",
             textWrap: "balance",
           }}
           initial="hidden"
@@ -199,48 +166,27 @@ export function Hero() {
             hidden: {},
             show: { transition: { staggerChildren: 0.05, delayChildren: 0.08 } },
           }}
-          key={headlineIdx}
         >
-          {current.lead.split(" ").map((w, i) => (
-            <Word key={i} reduce={reduce}>{w}</Word>
-          ))}{" "}
-          <Accent reduce={reduce} stagger={current.lead.split(" ").length}>{current.accent}</Accent>{" "}
-          {current.trail.split(" ").map((w, i) => (
-            <Word key={`t-${i}`} reduce={reduce} delay={0.35}>{w}</Word>
+          {"Insuring the buildings that make our cities".split(" ").map((w, i) => (
+            <Word key={i} reduce={reduce}>
+              {w}
+            </Word>
           ))}
+          <br />
+          <span style={{ display: "inline-block", marginTop: "0.2em" }}>
+            <Accent reduce={reduce} stagger={9}>home.</Accent>
+          </span>
         </motion.h1>
 
         {/* === PHOTO + LEDE === plate cols 1-8 + lede cols 9-12 */}
         <div className="grid-12 hero-plate" style={{ alignItems: "stretch", columnGap: 32, rowGap: 24, marginTop: 8 }}>
           <div className="col-8 start-1 hero-photo">
-            {/* Hairline ink rule above the plate */}
-            <div aria-hidden style={{ height: 1, background: "var(--ink)", marginBottom: 12 }} />
-            <div style={{ position: "relative" }}>
-              <PhotoSlot
-                alt="Three-quarter view of a 1960s California mid-century three-story stucco apartment building in Long Beach, palm fronds in soft focus at the edge of frame."
-                caption="California · Long Beach · TK"
-                ratio="16 / 9"
-                priority
-              />
-            </div>
-            <span
-              style={{
-                display: "block",
-                marginTop: 10,
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: "var(--ink-3)",
-              }}
-            >
-              Plate 01 — California · Long Beach · 2026
-            </span>
+            <HeroVideo caption="Plate 01 — San Francisco · Alamo Square · 2026" />
           </div>
 
           <div
             className="col-4 start-9 hero-lede-col"
-            style={{ display: "flex", flexDirection: "column", gap: 16, paddingTop: 13 }}
+            style={{ display: "flex", flexDirection: "column", gap: 18, paddingTop: 13 }}
           >
             <motion.p
               initial={{ opacity: 0, y: reduce ? 0 : 12 }}
@@ -251,35 +197,29 @@ export function Hero() {
                 fontFamily: "var(--font-body)",
                 fontSize: 16,
                 lineHeight: 1.6,
-                color: "var(--ink-2)",
+                color: "var(--ink)",
                 textWrap: "pretty",
                 hyphens: "manual",
               }}
             >
-              An independent insurance brokerage for multifamily, mixed-use, SFR portfolios, HOAs,
-              and apartment buildings. California-led; licensed across the Western United States.
-            </motion.p>
-            <motion.p
-              initial={{ opacity: 0, y: reduce ? 0 : 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: EASE, delay: 0.7 }}
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-body)",
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: "var(--ink-3)",
-                textWrap: "pretty",
-                hyphens: "manual",
-              }}
-            >
-              Describe your building below and Carbon — the AI quote agent — captures the
-              submission for a specialist.
+              Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
+              apartment buildings.{" "}
+              <em
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontStyle: "italic",
+                  fontSize: "1.05em",
+                  color: "var(--ink)",
+                }}
+              >
+                Five-unit walk-ups to billion-dollar schedules.
+              </em>{" "}
+              Placed across admitted markets, surplus lines, and specialty programs.
             </motion.p>
           </div>
         </div>
 
-        {/* === CHAT INPUT === full-width below the plate */}
+        {/* === CHAT BOX === multi-line textarea + side button + microcopy */}
         <motion.div
           initial={{ opacity: 0, y: reduce ? 0 : 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -287,6 +227,7 @@ export function Hero() {
           style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}
         >
           <div
+            className="chat-box"
             style={{
               border: focused ? "1px solid var(--ember)" : "1px solid var(--ink)",
               transition: "border-color var(--dur-fast) var(--ease)",
@@ -296,45 +237,73 @@ export function Hero() {
               background: "var(--paper-2)",
             }}
           >
-            <label htmlFor="hero-input" className="sr-only">
-              Tell Carbon about your building
-            </label>
-            <textarea
-              id="hero-input"
-              ref={inputRef}
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKey}
-              onFocus={() => {
-                setFocused(true);
-                track("cs_hero_input_focus");
-              }}
-              onBlur={() => setFocused(false)}
-              placeholder={PLACEHOLDERS[placeholderIdx]}
-              style={{
-                resize: "none",
-                border: 0,
-                outline: "none",
-                background: "transparent",
-                padding: "18px 20px",
-                fontFamily: "var(--font-body)",
-                fontSize: 17,
-                lineHeight: 1.4,
-                color: "var(--ink)",
-                minHeight: 56,
-                maxHeight: 160,
-              }}
-            />
+            <div style={{ position: "relative", padding: "18px 20px 16px" }}>
+              <label htmlFor="hero-input" className="sr-only">
+                Tell Carbon about your building
+              </label>
+              {/* Cycling placeholder layered behind the textarea — cross-fade */}
+              {!input && (
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={placeholderIdx}
+                    aria-hidden
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.35, ease: EASE }}
+                    style={{
+                      position: "absolute",
+                      top: 18,
+                      left: 20,
+                      right: 20,
+                      pointerEvents: "none",
+                      fontFamily: "var(--font-body)",
+                      fontSize: 17,
+                      lineHeight: 1.5,
+                      color: "var(--ink-3)",
+                    }}
+                  >
+                    {PLACEHOLDERS[placeholderIdx]}
+                  </motion.span>
+                </AnimatePresence>
+              )}
+              <textarea
+                id="hero-input"
+                ref={inputRef}
+                rows={3}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKey}
+                onFocus={() => {
+                  setFocused(true);
+                  track("cs_hero_input_focus");
+                }}
+                onBlur={() => setFocused(false)}
+                style={{
+                  width: "100%",
+                  resize: "vertical",
+                  border: 0,
+                  outline: "none",
+                  background: "transparent",
+                  fontFamily: "var(--font-body)",
+                  fontSize: 17,
+                  lineHeight: 1.5,
+                  color: "var(--ink)",
+                  minHeight: 96,
+                  display: "block",
+                }}
+              />
+            </div>
             <button
               type="button"
               onClick={() => submit()}
               aria-label="Ask Carbon"
+              className="chat-submit"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 10,
-                padding: "0 20px",
+                padding: "0 28px",
                 border: 0,
                 borderLeft: "1px solid var(--ink)",
                 background: input.trim() ? "var(--ember)" : "var(--ink)",
@@ -345,6 +314,7 @@ export function Hero() {
                 textTransform: "uppercase",
                 cursor: "pointer",
                 transition: "background var(--dur-fast) var(--ease)",
+                alignSelf: "stretch",
               }}
             >
               <span>Ask Carbon</span>
@@ -355,71 +325,40 @@ export function Hero() {
             </button>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
-            <span
+          {/* Single secondary link right-aligned */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Link
+              href="/quote"
+              className="chat-secondary"
               style={{
                 fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.22em",
+                fontSize: 11,
+                letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color: "var(--ink-3)",
+                color: "var(--ink-2)",
+                textDecoration: "none",
+                borderBottom: "1px solid transparent",
+                paddingBottom: 2,
+                transition: "border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
               }}
             >
-              Try
-            </span>
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => submit(s)}
-                className="hero-try"
-                style={{
-                  appearance: "none",
-                  background: "transparent",
-                  border: 0,
-                  padding: 0,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-2)",
-                  cursor: "pointer",
-                  borderBottom: "1px solid transparent",
-                  transition: "border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-                }}
-              >
-                {s}
-              </button>
-            ))}
-            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 12 }}>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-3)",
-                }}
-              >
-                or
-              </span>
-              <Link
-                href="/quote"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--ink)",
-                  textDecoration: "none",
-                  borderBottom: "1px solid var(--ink)",
-                  paddingBottom: 2,
-                }}
-              >
-                Use the form →
-              </Link>
-            </span>
+              Or use the standard quote form →
+            </Link>
           </div>
+
+          {/* Microcopy — even smaller mono small-caps */}
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.28em",
+              textTransform: "uppercase",
+              color: "var(--ink-3)",
+              textAlign: "right",
+            }}
+          >
+            Reviewed by a specialist. Most submissions answered same business day.
+          </span>
         </motion.div>
 
         {/* === FOOTER === paginated cover line */}
@@ -461,33 +400,25 @@ export function Hero() {
       </div>
 
       <style>{`
-        .hero-nav-link:hover { border-bottom-color: var(--ember) !important; }
-        .hero-try:hover { border-bottom-color: var(--ember) !important; color: var(--ink) !important; }
+        .chat-secondary:hover { border-bottom-color: var(--ember) !important; color: var(--ink) !important; }
         @media (max-width: 960px) { .hero-nav { display: none !important; } }
         @media (max-width: 768px) {
           .hero-plate .col-8,
           .hero-plate .col-4 { grid-column: 1 / -1 !important; }
           .hero-tagline { display: none; }
+          .hero-status > span { display: none; }
         }
       `}</style>
     </section>
   );
 }
 
-function Word({
-  children,
-  reduce,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  reduce: boolean | null;
-  delay?: number;
-}) {
+function Word({ children, reduce }: { children: React.ReactNode; reduce: boolean | null }) {
   return (
     <motion.span
       variants={{
         hidden: { opacity: 0, y: reduce ? 0 : 10 },
-        show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE, delay } },
+        show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
       }}
       style={{ display: "inline-block", whiteSpace: "pre", marginRight: "0.22em" }}
     >
@@ -508,20 +439,21 @@ function Accent({
   return (
     <motion.em
       variants={{
-        hidden: { opacity: 0, y: reduce ? 0 : 12, scale: reduce ? 1 : 0.98 },
+        hidden: { opacity: 0, y: reduce ? 0 : 14, scale: reduce ? 1 : 0.98 },
         show: {
           opacity: 1,
           y: 0,
           scale: 1,
-          transition: { duration: 0.75, ease: EASE, delay: stagger * 0.05 + 0.15 },
+          transition: { duration: 0.85, ease: EASE, delay: stagger * 0.05 + 0.2 },
         },
       }}
       style={{
         display: "inline-block",
+        fontFamily: "var(--font-wordmark)",
         fontStyle: "italic",
+        fontWeight: 400,
         color: "var(--ember)",
         paddingRight: "0.06em",
-        marginRight: "0.06em",
       }}
     >
       {children}
@@ -531,20 +463,22 @@ function Accent({
 
 function PulseDot() {
   return (
-    <span aria-hidden style={{ position: "relative", display: "inline-flex", width: 7, height: 7 }}>
-      <span
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "var(--ember)",
-          animation: "carbon-pulse 1.8s ease-out infinite",
-        }}
-      />
-      <span style={{ position: "relative", width: 7, height: 7, background: "var(--ember)" }} />
+    <span aria-hidden className="pulse-dot">
       <style>{`
-        @keyframes carbon-pulse {
-          0% { transform: scale(1); opacity: 0.8; }
-          80%, 100% { transform: scale(2.4); opacity: 0; }
+        .pulse-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          background: var(--ember);
+          animation: pulse-dot-anim 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot-anim {
+          0%   { opacity: 1; }
+          50%  { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pulse-dot { animation: none; opacity: 1; }
         }
       `}</style>
     </span>
