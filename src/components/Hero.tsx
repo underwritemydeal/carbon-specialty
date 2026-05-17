@@ -1,77 +1,154 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { motion, useReducedMotion, AnimatePresence } from "motion/react";
-import { Wordmark } from "./Wordmark";
-import { HeroVideo } from "./HeroVideo";
-import { useChat } from "./ChatProvider";
-import { track } from "@/lib/analytics";
+/**
+ * Hero — sprint C.S.1.5.
+ *
+ * Full-bleed video block. The video fills the section; masthead / eyebrow
+ * / headline are absolutely positioned over it. Two pure ink-to-transparent
+ * gradient overlays provide legibility at the top (for masthead) and the
+ * bottom (for headline + the sharp transition into the paper section below).
+ *
+ * Lede + chat moved to <HeroLede /> in a separate paper-base section.
+ */
 
-const PLACEHOLDERS = [
-  "24 units in Long Beach, 1962…",
-  "Mixed-use, ground-floor retail, Pasadena…",
-  "Builders risk, ADU project, San Diego…",
-  "10-unit walk-up, recent fire. Help.",
-  "Five-building portfolio, scattered-site SFR…",
-];
+import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { motion, useReducedMotion } from "motion/react";
+import { Wordmark } from "./Wordmark";
 
 const EASE = [0.2, 0.7, 0.2, 1] as const;
 
+const HEADLINE_LINE_1 = "Insuring the buildings that make our cities";
+const HEADLINE_LINE_2 = "home.";
+
 export function Hero() {
-  const router = useRouter();
-  const { open: onOpenChat } = useChat();
-  const [input, setInput] = useState("");
-  const [placeholderIdx, setPlaceholderIdx] = useState(0);
-  const [focused, setFocused] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
 
+  // Half-rate scroll parallax on the video, capped ±40px. Same logic as
+  // the old HeroVideo component — reduced-motion bails out cleanly.
   useEffect(() => {
-    if (focused || input) return;
-    const id = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDERS.length), 3500);
-    return () => clearInterval(id);
-  }, [focused, input]);
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (reduceQuery.matches) return;
 
-  const submit = (msg?: string) => {
-    const text = (msg ?? input).trim();
-    track("cs_hero_input_submit", { has_text: Boolean(text), suggestion: msg ?? null });
-    onOpenChat(text || undefined);
-    setInput("");
-  };
+    let raf = 0;
+    let pending = false;
+    const update = () => {
+      pending = false;
+      const rect = wrap.getBoundingClientRect();
+      const scrollPast = -rect.top;
+      let offset = scrollPast * 0.5;
+      if (offset > 40) offset = 40;
+      if (offset < -40) offset = -40;
+      wrap.style.setProperty("--hero-parallax", `${offset}px`);
+    };
+    const onScroll = () => {
+      if (pending) return;
+      pending = true;
+      raf = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, []);
 
-  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
-  };
+  const headlineWords = HEADLINE_LINE_1.split(" ");
 
   return (
     <section
       aria-labelledby="hero-headline"
+      className="hero-fullbleed"
       style={{
         position: "relative",
-        background: "var(--paper)",
-        color: "var(--ink)",
+        background: "var(--ink)",
+        color: "var(--paper)",
         overflow: "hidden",
-        isolation: "isolate",
+        borderBottom: "1px solid var(--ink)",
       }}
     >
+      {/* === Full-bleed video layer === */}
       <div
-        className="container"
+        ref={wrapRef}
+        className="hero-video-wrap"
+        aria-hidden
         style={{
-          position: "relative",
-          paddingBlock: "24px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 32,
+          position: "absolute",
+          inset: 0,
+          zIndex: 0,
+          transform: "translate3d(0, var(--hero-parallax, 0px), 0)",
+          willChange: "transform",
         }}
       >
-        {/* === HEADER === wordmark / nav / Get a quote */}
+        <video
+          className="hero-video"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster="/videos/hero-painted-ladies-poster.jpg"
+          aria-hidden="true"
+        >
+          <source src="/videos/hero-painted-ladies.webm" type="video/webm" />
+          <source src="/videos/hero-painted-ladies.mp4" type="video/mp4" />
+        </video>
+        <img
+          src="/videos/hero-painted-ladies-poster.jpg"
+          alt=""
+          aria-hidden="true"
+          className="hero-video-poster"
+          loading="eager"
+          decoding="async"
+        />
+      </div>
+
+      {/* === Top gradient overlay — masthead legibility === */}
+      <div
+        aria-hidden
+        className="hero-overlay hero-overlay--top"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          background:
+            "linear-gradient(to bottom, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 30%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* === Bottom gradient overlay — headline legibility + ink→paper transition === */}
+      <div
+        aria-hidden
+        className="hero-overlay hero-overlay--bottom"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          background:
+            "linear-gradient(to top, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 35%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* === Content layer === */}
+      <div
+        className="container hero-content"
+        style={{
+          position: "relative",
+          zIndex: 2,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* MASTHEAD */}
         <header
-          className="hero-header"
+          className="hero-masthead"
           style={{
             display: "grid",
             gridTemplateColumns: "auto 1fr auto",
@@ -79,8 +156,12 @@ export function Hero() {
             gap: 32,
           }}
         >
-          <Link href="/" style={{ textDecoration: "none", color: "inherit" }} aria-label="Carbon Specialty — home">
-            <Wordmark size="sm" align="left" />
+          <Link
+            href="/"
+            style={{ textDecoration: "none", color: "inherit" }}
+            aria-label="Carbon Specialty — home"
+          >
+            <Wordmark size="sm" overVideo align="left" />
           </Link>
 
           <nav aria-label="Primary" className="hero-nav" style={{ display: "flex", justifyContent: "center", gap: 32 }}>
@@ -91,17 +172,53 @@ export function Hero() {
               { label: "Insights", href: "/insights" },
               { label: "Contact", href: "/contact" },
             ].map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="nav-link"
-              >
+              <Link key={l.href} href={l.href} className="nav-link nav-link--paper">
                 <span>{l.label}</span>
               </Link>
             ))}
           </nav>
 
-          <Link href="/quote" className="btn" style={{ padding: "10px 18px", fontSize: 13 }}>
+          {/* Mobile hamburger — only renders ≤960px (nav hidden). Routes
+              users to /contact as the simplest mobile menu fallback. */}
+          <Link
+            href="/contact"
+            aria-label="Open menu"
+            className="hero-hamburger"
+            style={{
+              display: "none",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 36,
+              height: 36,
+              border: "1px solid var(--paper)",
+              color: "var(--paper)",
+              textDecoration: "none",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="4" y1="7"  x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </Link>
+
+          <Link
+            href="/quote"
+            className="hero-quote-btn"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 18px",
+              border: "1px solid var(--paper)",
+              background: "var(--ink)",
+              color: "var(--paper)",
+              fontFamily: "var(--font-body)",
+              fontSize: 13,
+              textDecoration: "none",
+              transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
+            }}
+          >
             Get a quote
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <line x1="4" y1="12" x2="20" y2="12" />
@@ -110,24 +227,30 @@ export function Hero() {
           </Link>
         </header>
 
-        <div aria-hidden style={{ height: 1, background: "var(--ink)" }} />
-
-        {/* === EYEBROW === section index + live status (pulse dot left of CARBON) */}
-        <div className="grid-12" style={{ alignItems: "baseline" }}>
+        {/* EYEBROW ROW — paper text on video, hairline rule below at 30% */}
+        <div
+          className="hero-eyebrow grid-12"
+          style={{
+            alignItems: "baseline",
+            paddingTop: 20,
+            marginTop: 16,
+            borderTop: "1px solid rgba(245,242,236,0.3)",
+          }}
+        >
           <span
-            className="col-6"
+            className="col-6 hero-eyebrow-left"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 11,
               letterSpacing: "0.22em",
               textTransform: "uppercase",
-              color: "var(--ember)",
+              color: "var(--paper)",
             }}
           >
             00 — Get a quote
           </span>
           <span
-            className="col-6 hero-status"
+            className="col-6 hero-eyebrow-right"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -137,7 +260,7 @@ export function Hero() {
               fontSize: 10,
               letterSpacing: "0.2em",
               textTransform: "uppercase",
-              color: "var(--ink-3)",
+              color: "var(--paper)",
             }}
           >
             <PulseDot />
@@ -145,268 +268,99 @@ export function Hero() {
           </span>
         </div>
 
-        {/* === HEADLINE === forced 2-line, italic pine "home." on its own line */}
+        {/* Spacer pushes the headline to the bottom third of the hero */}
+        <div style={{ flex: 1 }} />
+
+        {/* HEADLINE — anchored bottom-third, left-aligned with masthead */}
         <motion.h1
           id="hero-headline"
           className="hero-h1"
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } },
+          }}
           style={{
             margin: 0,
+            paddingBottom: 64,
             fontFamily: "var(--font-display)",
             fontWeight: 400,
             fontSize: "clamp(56px, 8.5vw, 120px)",
             lineHeight: 1.04,
             letterSpacing: "-0.025em",
-            color: "var(--ink)",
+            color: "var(--paper)",
             maxWidth: "14ch",
             textWrap: "balance",
           }}
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: {},
-            show: { transition: { staggerChildren: 0.05, delayChildren: 0.08 } },
-          }}
         >
-          {"Insuring the buildings that make our cities".split(" ").map((w, i) => (
-            <Word key={i} reduce={reduce}>
-              {w}
-            </Word>
+          {headlineWords.map((w, i) => (
+            <Word key={i} reduce={reduce}>{w}</Word>
           ))}
           <br />
           <span style={{ display: "inline-block", marginTop: "0.2em" }}>
-            <Accent reduce={reduce} stagger={9}>home.</Accent>
+            <Accent reduce={reduce} stagger={headlineWords.length}>{HEADLINE_LINE_2}</Accent>
           </span>
         </motion.h1>
-
-        {/* === PHOTO + LEDE === plate cols 1-8 + lede cols 9-12 */}
-        <div className="grid-12 hero-plate" style={{ alignItems: "stretch", columnGap: 32, rowGap: 24, marginTop: 8 }}>
-          <div className="col-8 start-1 hero-photo">
-            <HeroVideo caption="Plate 01 — San Francisco · Alamo Square · 2026" />
-          </div>
-
-          <div
-            className="col-4 start-9 hero-lede-col"
-            style={{ display: "flex", flexDirection: "column", gap: 18, paddingTop: 13 }}
-          >
-            <motion.p
-              initial={{ opacity: 0, y: reduce ? 0 : 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: EASE, delay: 0.6 }}
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-body)",
-                fontSize: 16,
-                lineHeight: 1.6,
-                color: "var(--ink)",
-                textWrap: "pretty",
-                hyphens: "manual",
-              }}
-            >
-              Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
-              apartment buildings.{" "}
-              <em
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontStyle: "italic",
-                  fontSize: "1.05em",
-                  color: "var(--ink)",
-                }}
-              >
-                Five-unit walk-ups to billion-dollar schedules.
-              </em>{" "}
-              Placed across admitted markets, surplus lines, and specialty programs.
-            </motion.p>
-          </div>
-        </div>
-
-        {/* === CHAT BOX === multi-line textarea + side button + microcopy */}
-        <motion.div
-          initial={{ opacity: 0, y: reduce ? 0 : 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: EASE, delay: 0.85 }}
-          style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 8 }}
-        >
-          <div
-            className="chat-box"
-            style={{
-              border: focused ? "1px solid var(--ember)" : "1px solid var(--ink)",
-              transition: "border-color var(--dur-fast) var(--ease)",
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              alignItems: "stretch",
-              background: "var(--paper-2)",
-            }}
-          >
-            <div style={{ position: "relative", padding: "18px 20px 16px" }}>
-              <label htmlFor="hero-input" className="sr-only">
-                Tell Carbon about your building
-              </label>
-              {/* Cycling placeholder layered behind the textarea — cross-fade */}
-              {!input && (
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={placeholderIdx}
-                    aria-hidden
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.35, ease: EASE }}
-                    style={{
-                      position: "absolute",
-                      top: 18,
-                      left: 20,
-                      right: 20,
-                      pointerEvents: "none",
-                      fontFamily: "var(--font-body)",
-                      fontSize: 17,
-                      lineHeight: 1.5,
-                      color: "var(--ink-3)",
-                    }}
-                  >
-                    {PLACEHOLDERS[placeholderIdx]}
-                  </motion.span>
-                </AnimatePresence>
-              )}
-              <textarea
-                id="hero-input"
-                ref={inputRef}
-                rows={3}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={onKey}
-                onFocus={() => {
-                  setFocused(true);
-                  track("cs_hero_input_focus");
-                }}
-                onBlur={() => setFocused(false)}
-                style={{
-                  width: "100%",
-                  resize: "vertical",
-                  border: 0,
-                  outline: "none",
-                  background: "transparent",
-                  fontFamily: "var(--font-body)",
-                  fontSize: 17,
-                  lineHeight: 1.5,
-                  color: "var(--ink)",
-                  minHeight: 96,
-                  display: "block",
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => submit()}
-              aria-label="Ask Carbon"
-              className="chat-submit"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "0 28px",
-                border: 0,
-                borderLeft: "1px solid var(--ink)",
-                background: input.trim() ? "var(--ember)" : "var(--ink)",
-                color: "var(--paper)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                cursor: "pointer",
-                transition: "background var(--dur-fast) var(--ease)",
-                alignSelf: "stretch",
-              }}
-            >
-              <span>Ask Carbon</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <polyline points="14 6 20 12 14 18" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Single secondary link right-aligned */}
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Link
-              href="/quote"
-              className="chat-secondary"
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                letterSpacing: "0.18em",
-                textTransform: "uppercase",
-                color: "var(--ink-2)",
-                textDecoration: "none",
-                borderBottom: "1px solid transparent",
-                paddingBottom: 2,
-                transition: "border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-              }}
-            >
-              Or use the standard quote form →
-            </Link>
-          </div>
-
-          {/* Microcopy — even smaller mono small-caps */}
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.28em",
-              textTransform: "uppercase",
-              color: "var(--ink-3)",
-              textAlign: "right",
-            }}
-          >
-            Reviewed by a specialist. Most submissions answered same business day.
-          </span>
-        </motion.div>
-
-        {/* === FOOTER === paginated cover line */}
-        <div
-          style={{
-            paddingTop: 20,
-            borderTop: "1px solid var(--ink)",
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
-            alignItems: "baseline",
-            gap: 24,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              color: "var(--ink-3)",
-            }}
-          >
-            Cover
-          </span>
-          <span
-            className="hero-tagline"
-            style={{
-              fontFamily: "var(--font-display)",
-              fontStyle: "italic",
-              fontSize: 13,
-              color: "var(--ink-3)",
-              textAlign: "center",
-            }}
-          >
-            Carbon Specialty Insurance · Real estate &middot; California &amp; the Western United States
-          </span>
-          <span className="page-no">00 / 06</span>
-        </div>
       </div>
 
       <style>{`
-        .chat-secondary:hover { border-bottom-color: var(--ember) !important; color: var(--ink) !important; }
-        @media (max-width: 960px) { .hero-nav { display: none !important; } }
-        @media (max-width: 768px) {
-          .hero-plate .col-8,
-          .hero-plate .col-4 { grid-column: 1 / -1 !important; }
-          .hero-tagline { display: none; }
-          .hero-status > span { display: none; }
+        /* Heights */
+        .hero-fullbleed { height: 85vh; min-height: 640px; }
+        @media (max-width: 1024px) { .hero-fullbleed { height: 75vh; min-height: 560px; } }
+        @media (max-width: 600px)  { .hero-fullbleed { height: 60vh; min-height: 460px; } }
+
+        /* Content layout */
+        .hero-content { padding-top: 40px; padding-bottom: 0; }
+        @media (max-width: 1024px) { .hero-content { padding-top: 24px; } }
+        @media (max-width: 600px)  { .hero-content { padding-top: 16px; } }
+
+        /* Video + poster */
+        .hero-video,
+        .hero-video-poster {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .hero-video-poster { display: none; }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-video        { display: none; }
+          .hero-video-poster { display: block; }
+          .hero-video-wrap   { transform: none !important; }
+        }
+
+        /* Nav link, paper variant — overrides the default --ink underline */
+        .nav-link--paper { color: var(--paper); }
+        .nav-link--paper::after { background: var(--paper); }
+        .nav-link--paper:hover { color: var(--paper); }
+
+        /* Quote button hover — invert (paper bg, ink text) on hover so it
+           reads as the inverse of its rest state. Border stays paper. */
+        .hero-quote-btn:hover { background: var(--paper) !important; color: var(--ink) !important; }
+
+        /* Bottom gradient grows on mobile to give the smaller headline more
+           legibility room (per spec — ~45% of hero on mobile). */
+        @media (max-width: 600px) {
+          .hero-overlay--bottom {
+            background: linear-gradient(to top, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 45%) !important;
+          }
+        }
+
+        /* Mobile nav: collapse, show hamburger */
+        @media (max-width: 960px) {
+          .hero-nav        { display: none !important; }
+          .hero-hamburger  { display: inline-flex !important; }
+          .hero-quote-btn  { display: none !important; }
+        }
+
+        /* Eyebrow row stacks vertically on mobile */
+        @media (max-width: 600px) {
+          .hero-eyebrow .hero-eyebrow-left,
+          .hero-eyebrow .hero-eyebrow-right { grid-column: 1 / -1 !important; justify-content: flex-start !important; }
+          .hero-eyebrow .hero-eyebrow-right { margin-top: 6px; }
         }
       `}</style>
     </section>
@@ -463,22 +417,22 @@ function Accent({
 
 function PulseDot() {
   return (
-    <span aria-hidden className="pulse-dot">
+    <span aria-hidden className="hero-pulse-dot">
       <style>{`
-        .pulse-dot {
+        .hero-pulse-dot {
           display: inline-block;
           width: 6px;
           height: 6px;
           background: var(--ember);
-          animation: pulse-dot-anim 2s ease-in-out infinite;
+          animation: hero-pulse-dot-anim 2s ease-in-out infinite;
         }
-        @keyframes pulse-dot-anim {
+        @keyframes hero-pulse-dot-anim {
           0%   { opacity: 1; }
           50%  { opacity: 0.5; }
           100% { opacity: 1; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .pulse-dot { animation: none; opacity: 1; }
+          .hero-pulse-dot { animation: none; opacity: 1; }
         }
       `}</style>
     </span>

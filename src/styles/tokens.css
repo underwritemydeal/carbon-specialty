@@ -246,6 +246,14 @@
 .wordmark.inverted .wm-sub { color: var(--paper); }
 .wordmark.inverted .wm-rule { background: var(--paper-3); }
 
+/* C.S.1.5 — masthead-over-video variant. CA stays pine (brand stamp);
+   RBON, rule, and SPECIALTY · INSURANCE shift to paper. */
+.wordmark.over-video,
+.wordmark.over-video .wm-name,
+.wordmark.over-video .wm-sub { color: var(--paper); }
+.wordmark.over-video .wm-name .wm-ca { color: var(--ember); }
+.wordmark.over-video .wm-rule { background: var(--paper); }
+
 .wordmark.sm .wm-name { font-size: 28px; }
 .wordmark.sm .wm-sub  { font-size: 9px; }
 .wordmark.sm .wm-rule { width: 48px; }

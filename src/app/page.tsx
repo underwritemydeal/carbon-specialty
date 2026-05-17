@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/Hero";
+import { HeroLede } from "@/components/HeroLede";
 import { CoverageSection } from "@/components/CoverageCards";
 import { Position } from "@/components/Position";
 import { AssetClassesGrid } from "@/components/AssetClasses";
@@ -38,6 +39,7 @@ export default function HomePage() {
       />
       <main id="main">
         <Hero />
+        <HeroLede />
         <CoverageSection />
         <Position />
         <AssetClassesGrid />
