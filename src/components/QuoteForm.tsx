@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
-import { submitLead } from "@/lib/covr";
+import { submitIntake, generateReferenceId, type CarbonFormPayload } from "@/lib/carbon-intake";
 import { track } from "@/lib/analytics";
 
 type Step = 0 | 1 | 2;
@@ -56,7 +56,22 @@ export function QuoteForm() {
   const submit = async () => {
     setSubmitting(true);
     track("cs_form_completed");
-    const r = await submitLead({ source: "form", payload: data });
+    const payload: CarbonFormPayload = {
+      source: "carbon_specialty_website_quote_form",
+      reference_id: generateReferenceId(),
+      submitted_at: new Date().toISOString(),
+      asset_class: data.assetClass,
+      address: data.address || undefined,
+      units: data.units || undefined,
+      valuation: data.valuation || undefined,
+      year_built: data.yearBuilt || undefined,
+      entity: data.entity || undefined,
+      contact_name: data.contact || undefined,
+      email: data.email || undefined,
+      phone: data.phone || undefined,
+      coverages: data.coverages,
+    };
+    const r = await submitIntake(payload);
     if (r.ok) track("cs_lead_captured", { route: r.route, source: "form" });
     router.push("/quote/sent");
   };
