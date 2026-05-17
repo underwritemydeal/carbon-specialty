@@ -1,106 +1,191 @@
-export type FAQItem = { q: string; a: string };
+"use client";
 
-// DRAFT — review before publishing
-export const HOME_FAQ: FAQItem[] = [
-  {
-    q: "Do you write earthquake coverage?",
-    // DRAFT — review before publishing
-    a: "Yes. Earthquake is placed via the surplus-lines market (DIC — difference in conditions) on a separate limit. We routinely write EQ on California multifamily, mixed-use, and HOA schedules where the standard market won't bind it.",
-  },
-  {
-    q: "What about vacant or unoccupied buildings?",
-    // DRAFT — review before publishing
-    a: "Vacant property is handled through specialty carriers. We need the reason for vacancy, the planned occupancy date, and any active construction or rehab work. Limits and deductibles look different than an occupied schedule — we'll walk you through what changes.",
-  },
-  {
-    q: "How do you handle losses with prior claims?",
-    // DRAFT — review before publishing
-    a: "Prior losses get disclosed upfront in the loss runs. We place to carriers comfortable with the claim history — that may mean a higher-deductible structure or a different rating tier, but the goal is the same: a quote you can act on.",
-  },
-  {
-    q: "Can you bind a building under construction?",
-    // DRAFT — review before publishing
-    a: "Yes — builders risk for ground-up multifamily and adaptive reuse. Quotes include soft costs, delayed opening, and a permanent property policy ready to bind at certificate of occupancy.",
-  },
-  {
-    q: "How fast can you turn around a quote?",
-    // DRAFT — review before publishing
-    a: "Turnaround depends on the schedule and what carriers ask for. The clock effectively starts when we have rent rolls (or unit count + year built), the current dec page, and loss runs. The chat or quote form gathers most of this; the specialist requests the rest and tells you up front when to expect an indication.",
-  },
-  {
-    q: "What if I'm switching from another agency mid-term?",
-    // DRAFT — review before publishing
-    a: "Mid-term broker-of-record changes are routine. We coordinate the BOR letter with your current agent and re-market only the policies where there's a clear advantage at renewal. No double-billing, no coverage gap.",
-  },
-];
+import { useState } from "react";
+import { FadeUp } from "./motion-primitives";
+import { HOME_FAQ, type FAQItem } from "@/lib/faq-data";
 
-export function FAQ({
-  items,
-  eyebrow = "06 — FAQ",
-}: {
-  items: FAQItem[];
-  eyebrow?: string;
-}) {
+export { HOME_FAQ };
+export type { FAQItem };
+
+export function FAQ({ items = HOME_FAQ }: { items?: FAQItem[]; eyebrow?: string }) {
   return (
-    <div style={{ borderTop: "1px solid var(--ink)" }}>
-      <span
-        className="sr-only"
-        style={{ position: "absolute", left: -9999 }}
-      >
-        {eyebrow}
-      </span>
-      {items.map((item) => (
-        <details
-          key={item.q}
-          className="faq-item"
-          style={{
-            borderBottom: "1px solid var(--ink)",
-            padding: "24px 0",
-          }}
-        >
-          <summary
-            style={{
-              cursor: "pointer",
-              listStyle: "none",
-              display: "grid",
-              gridTemplateColumns: "1fr 32px",
-              alignItems: "center",
-              gap: 24,
-              fontFamily: "var(--font-display)",
-              fontSize: 22,
-              lineHeight: 1.2,
-              letterSpacing: "-0.01em",
-              color: "var(--ink)",
-            }}
-          >
-            <span>{item.q}</span>
-            <span className="faq-mark" aria-hidden>+</span>
-          </summary>
-          <p
-            style={{
-              margin: "16px 0 0",
-              fontFamily: "var(--font-body)",
-              fontSize: 15,
-              lineHeight: 1.6,
-              color: "var(--ink-2)",
-              maxWidth: 720,
-            }}
-          >
-            {item.a}
-          </p>
-        </details>
-      ))}
+    <section
+      id="faq"
+      aria-labelledby="faq-headline"
+      style={{
+        background: "var(--paper)",
+        borderBottom: "1px solid var(--ink)",
+        paddingBlock: "112px 128px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Atmospheric photo behind the section at very low opacity (mocked
+          with a subtle ink-on-paper texture until Higgsfield is unblocked) */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 80% 30%, rgba(11,11,12,0.06) 0%, transparent 60%), radial-gradient(ellipse at 20% 80%, rgba(31,77,56,0.04) 0%, transparent 50%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div className="container" style={{ position: "relative" }}>
+        <FadeUp className="grid-12">
+          <div className="col-7">
+            <span className="page-no">06 — FAQ</span>
+            <h2
+              id="faq-headline"
+              style={{
+                margin: "16px 0 0",
+                fontFamily: "var(--font-display)",
+                fontWeight: 400,
+                fontSize: "clamp(40px, 6.5vw, 80px)",
+                lineHeight: 1.0,
+                letterSpacing: "-0.03em",
+                color: "var(--ink)",
+                textWrap: "balance",
+              }}
+            >
+              Questions{" "}
+              <em style={{ fontStyle: "italic", color: "var(--ember)" }}>
+                we hear from operators.
+              </em>
+            </h2>
+          </div>
+          <div className="col-5 start-8 faq-marg">
+            <span className="marginalia">
+              Draft answers below — under broker review before launch.
+            </span>
+          </div>
+        </FadeUp>
+
+        <div className="rule" style={{ marginBlock: 80 }} />
+
+        <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {items.map((item, i) => (
+            <FadeUp key={item.q} delay={i * 0.04}>
+              <FAQRow item={item} index={i} />
+            </FadeUp>
+          ))}
+        </ol>
+      </div>
       <style>{`
-        .faq-item summary::-webkit-details-marker { display: none; }
-        .faq-item[open] .faq-mark { transform: rotate(45deg); }
-        .faq-mark {
-          font-family: var(--font-mono);
-          font-size: 22px;
-          color: var(--ember);
-          transition: transform var(--dur-fast) var(--ease);
-          justify-self: end;
+        @media (max-width: 900px) {
+          .faq-row { grid-template-columns: 1fr !important; row-gap: 16px; }
+          .faq-marg { display: none; }
         }
       `}</style>
-    </div>
+    </section>
+  );
+}
+
+function FAQRow({ item, index }: { item: FAQItem; index: number }) {
+  const [open, setOpen] = useState(index === 0);
+  const ref = `06.${String(index + 1).padStart(2, "0")}`;
+  return (
+    <li
+      style={{
+        borderBottom: "1px solid var(--ink)",
+        padding: "32px 0",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="faq-row grid-12"
+        style={{
+          appearance: "none",
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          width: "100%",
+          textAlign: "left",
+          cursor: "pointer",
+          columnGap: "var(--s-5)",
+          alignItems: "flex-start",
+        }}
+      >
+        <div
+          className="col-3"
+          style={{ display: "flex", flexDirection: "column", gap: 4 }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              letterSpacing: "0.18em",
+              color: "var(--ember)",
+              fontFeatureSettings: '"tnum" 1',
+            }}
+          >
+            {ref}
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "var(--ink-3)",
+            }}
+          >
+            Question
+          </span>
+        </div>
+        <div className="col-9" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <h3
+            style={{
+              margin: 0,
+              fontFamily: "var(--font-display)",
+              fontWeight: 400,
+              fontSize: "clamp(22px, 2.6vw, 32px)",
+              lineHeight: 1.15,
+              letterSpacing: "-0.015em",
+              color: "var(--ink)",
+              textWrap: "balance",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 16,
+            }}
+          >
+            <span style={{ flex: 1 }}>{item.q}</span>
+            <span
+              aria-hidden
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 22,
+                color: "var(--ember)",
+                transform: open ? "rotate(45deg)" : "rotate(0deg)",
+                transition: "transform var(--dur-fast) var(--ease)",
+                lineHeight: 1,
+              }}
+            >
+              +
+            </span>
+          </h3>
+          {open && (
+            <p
+              style={{
+                margin: 0,
+                fontFamily: "var(--font-body)",
+                fontSize: 16,
+                lineHeight: 1.7,
+                color: "var(--ink-2)",
+                maxWidth: 680,
+                textWrap: "pretty",
+              }}
+            >
+              {item.a}
+            </p>
+          )}
+        </div>
+      </button>
+    </li>
   );
 }

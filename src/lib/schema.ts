@@ -1,6 +1,6 @@
 import { SITE } from "./site";
-import { ASSET_CLASSES } from "@/components/AssetClasses";
-import { HOME_FAQ } from "@/components/FAQ";
+import { ASSET_CLASSES } from "@/lib/asset-classes";
+import { HOME_FAQ } from "@/lib/faq-data";
 import { AUTHORS } from "@/components/AuthorBio";
 
 type Json = Record<string, unknown>;
