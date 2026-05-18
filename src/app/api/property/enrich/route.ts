@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { PropertyFacts, EnrichmentSource } from "@/lib/property-facts";
+import { fetchCACounty } from "@/lib/fetch-ca-county";
 
 export const runtime = "nodejs";
 
@@ -88,28 +89,52 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
     failed.push("geocoding");
   }
 
+  // ---- CA county direct (C.S.1.7.0a) -------------------------------------
+  // For CA addresses where Google Geocoding identified the county AND
+  // the county is in our registry (currently just LA County), query
+  // the county's ArcGIS FeatureServer directly. Realie returns empty
+  // data for CA addresses — the workaround was supposed to be Realie,
+  // but Realie itself has spotty CA coverage, so CA addresses route
+  // to county-direct first and only fall back to Realie if the county
+  // isn't registered or the parcel query returns no features.
+  //
+  // Non-CA addresses skip this block entirely and go straight to Realie.
+  let countyDirectHit = false;
+  if (
+    geo?.state === "CA" &&
+    typeof geo?.lat === "number" &&
+    typeof geo?.lng === "number" &&
+    geo?.county
+  ) {
+    const countyFacts = await fetchCACounty(geo.lat, geo.lng, geo.county);
+    if (countyFacts) {
+      Object.assign(facts, countyFacts);
+      succeeded.push("la-county");
+      countyDirectHit = true;
+    }
+    // No failed.push here yet — we'll only mark the county-direct path
+    // as failed if it was attempted (county was in registry but query
+    // returned no features). For now the routing prefers a quiet fall-
+    // through to Realie.
+  }
+
   // ---- Realie -------------------------------------------------------------
-  // C.S.1.6.8 — Replaced Regrid with Realie. Regrid Self-Serve started
-  // at ~$500/mo and didn't fit Carbon's ~25–200 quotes/month early-
-  // stage volume; Realie's free tier (25 req/mo + $0.15/overage) does.
-  // Realie's Address Lookup is the simplest match for our use case:
+  // C.S.1.6.8 — Replaced Regrid with Realie. Realie's Address Lookup:
   //   GET https://app.realie.ai/api/public/property/address/
-  //       ?state=<XX>&address=<street line 1>[&city=&county=]
+  //       ?state=<XX>&address=<street line 1>
   //   Authorization: <api-key>           (raw key, no Bearer prefix)
   //
-  // The endpoint requires structured `state` + `address` (street line
-  // 1 only) as separate query params, not a single concatenated
-  // string — so we still depend on Google Geocoding completing first
-  // to parse the address_components into street/state/city/county.
-  // Without geocoding we can't reliably call Realie, so we skip it.
+  // C.S.1.7.0a — Realie is now the fallback path. Skipped entirely when
+  // a CA county-direct source already returned data; runs for non-CA
+  // addresses or when the CA county isn't in the registry / returned
+  // empty features.
   const realieToken = process.env.REALIE_API_TOKEN;
-  if (realieToken && geo?.street_line && geo?.state) {
-    const realie = await fetchRealie(
-      geo.street_line,
-      geo.state,
-      realieToken,
-      { city: geo.city, county: geo.county },
-    );
+  if (countyDirectHit) {
+    // Skip — CA county-direct already populated facts. Don't double-spend
+    // Realie's request quota when we already have richer data.
+    failed.push("realie");
+  } else if (realieToken && geo?.street_line && geo?.state) {
+    const realie = await fetchRealie(geo.street_line, geo.state, realieToken);
     if (realie) {
       Object.assign(facts, realie);
       succeeded.push("realie");

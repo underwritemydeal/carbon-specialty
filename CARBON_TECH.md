@@ -63,7 +63,7 @@ Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead
 ### API routes
 
 - `POST /api/chat` — Anthropic Messages API proxy. Uses `claude-haiku-4-5-20251001` with prompt caching on the system block. Server-side tool-use loop, capped at 5 iterations. Modes: `intake` (default) and `extract` (used for structured field extraction at end of conversation). Tool registry includes `enrich_property`. Error categories logged with `[carbon-chat]` prefix: auth | rate-limit | server | network | bad-shape | tool-fail.
-- `POST /api/property/enrich` — Google Geocoding + Realie + Street View URL composer. 30-day edge cache via `{ next: { revalidate: 2592000 } }`. Partial-failure semantics — returns `sources_succeeded` and `sources_failed` arrays. 502 only when every source fails. Missing env keys degrade gracefully (returns what it can).
+- `POST /api/property/enrich` — Google Geocoding + CA county-direct ArcGIS (sprint C.S.1.7.0a) + Realie + Street View URL composer. Routing: CA addresses where the county is in `src/lib/ca-county-registry.ts` (currently LA County only) query the county's ArcGIS FeatureServer first; on null they fall back to Realie. Non-CA addresses bypass the CA path entirely. 30-day edge cache via `{ next: { revalidate: 2592000 } }`. Partial-failure semantics — returns `sources_succeeded` and `sources_failed` arrays plus the new `building` / `owner` / `transaction` grouped sections in `PropertyFacts`. 502 only when every source fails. Missing env keys degrade gracefully (returns what it can).
 - `POST /api/tts` — Inworld TTS (sprint C.S.1.6.2). `Authorization: Basic ${INWORLD_API_KEY}`, model `inworld-tts-1.5-mini`, voice `Reed`. Returns `audio/mpeg` (MP3, 24 kHz, 64 kbps). Per-IP rate-limit 30 calls / 10 min. Missing key → 503 `NO_KEY` (chat stays usable; voice surfaces silently no-op). Full details in *Anthropic API usage details → Voice (Inworld TTS)* below.
 - `POST /api/lead-fallback` — Resend integration for non-chat lead submissions (the secondary "standard quote form" path). Gated behind `NEXT_PUBLIC_LEADS_ENDPOINT_READY` flag.
 - `GET /api/og` — dynamic Open Graph image generator for social shares
@@ -74,8 +74,11 @@ Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead
 - `src/components/CarbonChat.tsx` — the chat slide-out component. Renders the textarea, message list, status line ("Looking up property…" when address-y input detected). Wires Google Places Autocomplete to the textarea (Sprint C.S.1.6.1).
 - `src/lib/carbon-system-prompt.ts` — the editorial-professional intake prompt. Defines tone, intake sequence, wrap-up sentinel string `"I have what a specialist needs to start."`, and tool-use instructions for `enrich_property`.
 - `src/lib/carbon-intake.ts` — client-side intake state machine. Exports `CarbonIntakePayload` type, `generateReferenceId()` (returns `CS-YYYY-XXXX` format), `ChatError` discriminated union with kinds: auth | rate-limit | server | network | bad-shape | tool-fail. Functions: `askCarbonIntake`, `extractIntakePayload`, `submitIntake`, `callChat`.
-- `src/lib/property-facts.ts` — defines `PropertyFacts` interface (the canonical shape of enrichment output).
+- `src/lib/property-facts.ts` — defines `PropertyFacts` interface (the canonical shape of enrichment output). Extended in C.S.1.7.0a with grouped `building` / `owner` / `transaction` sections alongside the legacy flat fields (kept populated for backwards-compat with chat-tools.ts and the intake prompt's enrichment-lead logic).
 - `src/lib/chat-tools.ts` — the `TOOLS` array and `executeTool` dispatcher. `enrich_property` is registered here.
+- `src/lib/arcgis-client.ts` (C.S.1.7.0a) — generic ArcGIS REST FeatureService query client. Geometry-based + where-clause modes. `[carbon-enrich] ARCGIS_*` diagnostic logging at every failure branch.
+- `src/lib/ca-county-registry.ts` (C.S.1.7.0a) — per-county `CACountyConfig` registry. Pre-populated with LA County (`LA_COUNTY`); subsequent sprints append OC, SD, Riverside, etc. via the same shape. Owner fields are explicitly modeled but typically `undefined` for CA per the privacy gap (see CARBON_RESEARCH.md "Property data API landscape").
+- `src/lib/fetch-ca-county.ts` (C.S.1.7.0a) — wraps `arcgis-client` + `ca-county-registry`. Exports `fetchCACounty(lat, lon, detectedCounty)` and the `normalizeCountyFeature` field-mapping translator. Used by `/api/property/enrich` ahead of the Realie fallback for CA addresses.
 - `src/styles/globals.css` — design tokens (CSS variables for colors, type scale, spacing, motion durations) and base reset.
 
 ## Critical workflow files
@@ -85,7 +88,7 @@ Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead
 
 ## What's wired end-to-end and working
 
-- Address typed in chat → submitted → `/api/chat` → Claude Haiku 4.5 → tool call `enrich_property` → `/api/property/enrich` → Google Geocoding + Realie + Street View → response with property facts → Claude resumes conversation with the facts → user sees confirmation in chat.
+- Address typed in chat → submitted → `/api/chat` → Claude Haiku 4.5 → tool call `enrich_property` → `/api/property/enrich` → Google Geocoding → (CA + registered county → ArcGIS direct, else / on null → Realie) + Street View → response with property facts → Claude resumes conversation with the facts → user sees confirmation in chat.
 - Google Places Autocomplete on the chat input field (Sprint C.S.1.6.1 — verify status if questioned).
 - Resend transactional email via `/api/lead-fallback` (gated behind feature flag).
 - Pre-launch lockdown (noindex + robots.txt Disallow).
