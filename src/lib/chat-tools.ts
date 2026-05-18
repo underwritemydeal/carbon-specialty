@@ -102,8 +102,16 @@ async function executeEnrichProperty(
     }
 
     // Compose a compact human-readable string the model can quote.
+    // C.S.1.6.6 — land_use_desc is the lead fact for asset-type
+    // inference; surface it near the top of the block so the model
+    // sees it before the secondary parcel facts.
     const lines: string[] = [];
     lines.push(`Address (canonical): ${data.canonical_address ?? data.query_address}`);
+    if (data.land_use_desc) {
+      lines.push(`Land use: ${data.land_use_desc}${data.land_use_code ? ` (code ${data.land_use_code})` : ""}`);
+    } else if (data.land_use_code) {
+      lines.push(`Land use code: ${data.land_use_code}`);
+    }
     if (typeof data.units === "number") lines.push(`Units: ${data.units}`);
     if (typeof data.year_built === "number") lines.push(`Year built: ${data.year_built}`);
     if (typeof data.square_feet === "number") lines.push(`Square feet: ${data.square_feet}`);

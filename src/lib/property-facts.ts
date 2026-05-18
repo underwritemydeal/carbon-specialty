@@ -31,6 +31,17 @@ export interface PropertyFacts {
   owner_of_record?: string;
   parcel_id?: string;
 
+  /** Land-use classification. Sprint C.S.1.6.6 — added so Carbon can
+   *  lead with asset-type inference instead of asking blind when
+   *  Regrid returns parcel facts that already answer the question
+   *  (e.g. single-family residential → "Are you renting it out?",
+   *  not "is this multifamily, mixed-use, or commercial?"). The
+   *  desc is the human-readable string (e.g. "Single Family
+   *  Residential"); the code is the raw numeric/string identifier
+   *  (e.g. "1100", varies by jurisdiction). */
+  land_use_code?: string;
+  land_use_desc?: string;
+
   /** Built client-side; no upstream call. Empty when GOOGLE_MAPS_API_KEY is unset. */
   street_view_url?: string;
 
