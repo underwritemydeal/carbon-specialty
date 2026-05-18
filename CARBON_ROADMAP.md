@@ -58,6 +58,20 @@ Adds Carbon's first voice surface and a mobile masthead/typography polish pass. 
 
 New env var: `INWORLD_API_KEY` (set on Vercel Preview + Production before prod deploy). All other deliverables are zero-config.
 
+### C.S.1.6.3 — Coverage expansion (dedicated /coverage editorial page)
+Adds a standalone editorial reference page for the full twelve-coverage menu, and restructures the home Coverage section so it points to the new page instead of trying to summarize twelve lines in three.
+
+- **New route `/coverage`.** Server-rendered magazine layout. Twelve chapters in operator order — Property, GL, Umbrella & Excess, Workers' Comp, EPLI, D&O, E&O, Cyber, Crime & Fidelity, PLL, Hired & Non-Owned Auto, Equipment Breakdown. Each chapter: large mono index + Plex Mono label, Plex Serif H2 lede, drop-cap body paragraph (2–4 editorial sentences), marginalia in the right column. Per-chapter pagination marker `NN / 12` bottom-right. Hairline ink rule between chapters. Chapter data lives in `src/lib/coverage-chapters.ts`. No body CTAs anywhere in the article.
+- **`AskCarbonStrip` (new client component).** Single "Ask Carbon →" affordance fixed to the viewport bottom (`position: fixed; bottom: 0`), paper background with hairline ink top border, no shadow, no radius — editorial register rather than mobile-app CTA. Opens the existing `CarbonChat` via `ChatProvider`. `/coverage` main reserves bottom padding so the last chapter clears the strip; iOS safe-area inset added on top of the strip's own padding.
+- **Home Coverage section condensed.** `src/components/CoverageCards.tsx` collapsed from three thin chapters with `Coverage detail →` links to three umbrella chapters with single-sentence bodies — Property, Liability, Specialty & Operations — followed by one `All coverages →` Plex Mono link anchored to `/coverage`. Per-chapter `Coverage detail →` links removed.
+- **Nav slot 2.** `Coverage` inserted at slot 2 (after `What we write`) across all three primary nav surfaces: `Header.tsx`, `Hero.tsx` hero masthead, and `Footer.tsx` services group. Final order: What we write → Coverage → How it works → About → Insights → Contact. The hero hamburger button itself still routes to `/contact` (it was never a real menu — pre-existing C.S.1.5 behavior, out of scope here).
+- **SEO + structured data.** `/coverage` added to `sitemap.ts` at priority 0.9. `breadcrumbs([Home, Coverage])` and canonical metadata wired on the page. (Pre-launch lockdown still in effect — robots.txt still returns `Disallow: /`, sitemap not advertised until C.S.1.flip.)
+- **Mobile pass at ≤480px.** Drop-cap scaled down from 4.2em → 3.5em (~56px) so it doesn't overrun the lede on phones. Chapter index + label collapse to a single baseline row. Marginalia hidden ≤768px. Page H1 clamped to `clamp(36px, 9vw, 56px)`. Lede pagination marker reorders above the H1 on mobile.
+
+**Operator-decision flag in the PR description:** the brief said "Add /coverage to the hamburger menu in slot 2 (after Programs)" — there is no `Programs` page, so this was read as "after What we write" (the asset classes page that lists the six asset-class programs Carbon places). Surfaced in the PR for review; safe to rename later if the operator wants `What we write` relabeled to `Programs`.
+
+Zero new dependencies. Zero new env vars.
+
 ## Planned (next-up, in order)
 
 ### C.S.1.7 — Rate-band intake rewrite

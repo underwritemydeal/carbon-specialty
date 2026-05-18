@@ -1,32 +1,35 @@
+import Link from "next/link";
 import { FadeUp } from "./motion-primitives";
 
+// C.S.1.6.3 — Condensed to three umbrellas. The single editorial
+// sentence per chapter hints at depth without enumerating; the full
+// twelve-coverage menu lives on /coverage and is reached via the
+// "All coverages →" link below the third chapter (replacing the old
+// per-chapter "Coverage detail →" links).
 const ITEMS = [
   {
     index: "01",
     eyebrow: "Property",
-    title: "All-risk property on the schedule.",
+    title: "All-risk on the schedule.",
     body:
-      "Replacement cost, agreed value, ordinance & law. Earthquake and flood placed via E&S where the standard market won’t bind. Schedules read line-by-line; exclusions get translated before they get signed.",
+      "Replacement cost, agreed value, ordinance and law — with EQ and flood placed through the surplus-lines market where the standard carriers won't bind.",
     marginalia: "Replacement cost · agreed value · ordinance & law",
-    link: "Coverage detail",
   },
   {
     index: "02",
     eyebrow: "Liability",
-    title: "GL, umbrella, and the policies that sit above.",
+    title: "GL, umbrella, and the policies above.",
     body:
-      "Per-location $1M / $2M baseline. Umbrellas from $5M to $25M layered across multi-building schedules. Habitational exclusions read line-by-line; the policy you don’t notice until you do.",
+      "Per-location $1M / $2M baseline scaled into $25M+ habitational umbrellas, with exclusions read line by line before anything gets bound.",
     marginalia: "GL · umbrella · excess · habitational EPLI",
-    link: "Coverage detail",
   },
   {
     index: "03",
-    eyebrow: "Operations",
-    title: "EPLI, hired and non-owned auto, equipment breakdown.",
+    eyebrow: "Specialty & Operations",
+    title: "Workers' comp, D&O, cyber, equipment breakdown.",
     body:
-      "The policies you forget about until a tenant hires an attorney or the chiller dies in August. Quiet coverage, written deliberately and reviewed at every renewal.",
-    marginalia: "EPLI · HNOA · equipment breakdown",
-    link: "Coverage detail",
+      "Nine more lines — workers' comp through equipment breakdown — written deliberately for the operating entity that stands behind the building.",
+    marginalia: "Workers' comp · D&O · cyber · equipment breakdown",
   },
 ];
 
@@ -157,22 +160,6 @@ export function CoverageSection() {
                   >
                     {item.body}
                   </p>
-                  <a
-                    href="/what-we-write"
-                    style={{
-                      alignSelf: "flex-start",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      color: "var(--ink)",
-                      textDecoration: "none",
-                      borderBottom: "1px solid var(--ink)",
-                      paddingBottom: 2,
-                    }}
-                  >
-                    {item.link} →
-                  </a>
                 </div>
 
                 {/* Marginalia */}
@@ -183,6 +170,48 @@ export function CoverageSection() {
             </FadeUp>
           ))}
         </div>
+
+        {/* C.S.1.6.3 — Single "All coverages →" link below the third
+            chapter. Replaces the per-chapter "Coverage detail →"
+            links that previously pointed to /what-we-write. Anchored
+            to the new /coverage editorial page. */}
+        <FadeUp
+          className="grid-12 coverage-all"
+          as="div"
+          delay={0.05}
+        >
+          <div
+            className="col-7 start-2"
+            style={{
+              marginTop: 40,
+              display: "flex",
+              justifyContent: "flex-start",
+            }}
+          >
+            <Link
+              href="/coverage"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                letterSpacing: "0.22em",
+                textTransform: "uppercase",
+                color: "var(--ink)",
+                textDecoration: "none",
+                borderBottom: "1px solid var(--ink)",
+                paddingBottom: 4,
+              }}
+            >
+              All coverages
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <polyline points="14 6 20 12 14 18" />
+              </svg>
+            </Link>
+          </div>
+        </FadeUp>
       </div>
       <style>{`
         @media (max-width: 900px) {
@@ -191,6 +220,10 @@ export function CoverageSection() {
           .coverage-row .col-3 { grid-column: 1 / -1 !important; }
           .coverage-marg { display: none; }
           .coverage-h2-line2 { padding-left: 0 !important; }
+          /* The "All coverages →" link unindents on mobile so it sits
+             flush-left with the chapter bodies rather than the
+             desktop col-2 start. */
+          .coverage-all .col-7 { grid-column: 1 / -1 !important; }
         }
       `}</style>
     </section>

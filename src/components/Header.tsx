@@ -2,8 +2,13 @@ import Link from "next/link";
 import { Wordmark } from "./Wordmark";
 import { Icon } from "./Icon";
 
+// C.S.1.6.3 — "Coverage" inserted at slot 2, after "What we write"
+// (which functions as the Programs page in the brief's wording). Order
+// reads: What we write → Coverage → How it works → About → Insights →
+// Contact across desktop nav, hero masthead nav, and footer services.
 const NAV = [
   { label: "What we write", href: "/what-we-write" },
+  { label: "Coverage", href: "/coverage" },
   { label: "How it works", href: "/how-it-works" },
   { label: "About", href: "/about" },
   { label: "Insights", href: "/insights" },
