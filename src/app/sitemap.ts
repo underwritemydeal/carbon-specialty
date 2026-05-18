@@ -4,6 +4,7 @@ import { SITE } from "@/lib/site";
 const STATIC_ROUTES = [
   { path: "/", priority: 1.0, changeFreq: "weekly" as const },
   { path: "/what-we-write", priority: 0.9, changeFreq: "monthly" as const },
+  { path: "/coverage", priority: 0.9, changeFreq: "monthly" as const },
   { path: "/how-it-works", priority: 0.9, changeFreq: "monthly" as const },
   { path: "/quote", priority: 0.9, changeFreq: "monthly" as const },
   { path: "/about", priority: 0.8, changeFreq: "monthly" as const },

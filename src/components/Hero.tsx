@@ -170,8 +170,12 @@ export function Hero() {
           </Link>
 
           <nav aria-label="Primary" className="hero-nav" style={{ display: "flex", justifyContent: "center", gap: 32 }}>
+            {/* C.S.1.6.3 — "Coverage" inserted at slot 2, matching the
+                Header NAV array. Same order across all primary nav
+                surfaces (hero masthead, inner-page header, footer). */}
             {[
               { label: "What we write", href: "/what-we-write" },
+              { label: "Coverage", href: "/coverage" },
               { label: "How it works", href: "/how-it-works" },
               { label: "About", href: "/about" },
               { label: "Insights", href: "/insights" },
