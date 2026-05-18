@@ -27,10 +27,18 @@ export function Wordmark({
   const cls = `wordmark ${size}${variant} align-${align}`;
   return (
     <div className={cls} aria-label="Carbon Specialty">
-      <div className="wm-name" aria-hidden>
-        <span className="wm-ca">CA</span>RBON
+      {/* wm-mark scopes the rule's positioning to CARBON's visual width.
+          Without this wrapper, the rule centers against the flex parent's
+          max-child-width — which can drift left when the wider SPECIALTY ·
+          INSURANCE sub-line is the widest child, or pin flush-left under
+          align-items: flex-start in the align-left / over-video variants.
+          See sprint C.S.1.5.2. */}
+      <div className="wm-mark" aria-hidden>
+        <div className="wm-name">
+          <span className="wm-ca">CA</span>RBON
+        </div>
+        <div className="wm-rule" />
       </div>
-      <div className="wm-rule" aria-hidden />
       <div className="wm-sub" aria-hidden>Specialty &middot; Insurance</div>
     </div>
   );
