@@ -96,8 +96,16 @@ export function HeroLede() {
               hyphens: "manual",
             }}
           >
-            Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
-            apartment buildings.{" "}
+            {/* Three semantic chunks so mobile (≤480px) can reshape this
+                into a stacked editorial spread: 24px Plex Serif lede,
+                32px Plex Serif italic pine pull-quote with 2x vertical
+                breathing room, 20px Plex Serif coda. Desktop renders
+                them inline as before via the default `display: inline`
+                on <span>. Sprint C.S.1.6.4. */}
+            <span className="hero-lede-s1">
+              Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
+              apartment buildings.
+            </span>{" "}
             <em
               className="hero-lede-five-unit"
               style={{
@@ -109,7 +117,9 @@ export function HeroLede() {
             >
               Five-unit walk-ups to billion-dollar schedules.
             </em>{" "}
-            Placed across admitted markets, surplus lines, and specialty programs.
+            <span className="hero-lede-s3">
+              Placed across admitted markets, surplus lines, and specialty programs.
+            </span>
           </motion.p>
 
           {/* Chat box — cols 1-10 */}
@@ -121,8 +131,12 @@ export function HeroLede() {
             transition={{ duration: 0.55, ease: EASE, delay: 0.1 }}
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
-            {/* Agent identity row above the textarea */}
+            {/* Agent identity row above the textarea. Hidden on mobile
+                (≤480px) per sprint C.S.1.6.4 — the status pulse only
+                renders inside the CarbonChat panel header now, not as
+                page-level chrome. */}
             <div
+              className="hero-lede-identity"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -149,7 +163,7 @@ export function HeroLede() {
                 background: "var(--paper-2)",
               }}
             >
-              <div style={{ position: "relative", padding: "20px 22px 18px" }}>
+              <div className="chat-text-wrap" style={{ position: "relative", padding: "20px 22px 18px" }}>
                 <label htmlFor="hero-lede-input" className="sr-only">
                   Tell Carbon about your building
                 </label>
@@ -287,6 +301,70 @@ export function HeroLede() {
         @media (max-width: 480px) {
           .hero-lede-section { padding-top: 36px !important; }
           .hero-lede-five-unit { color: var(--ember) !important; }
+        }
+
+        /* C.S.1.6.4 — Mobile body lede reshape + chat input restructure.
+           The lede paragraph becomes a vertical editorial spread:
+             · sentence 1 — 24px Plex Serif, plain
+             · sentence 2 — 32px Plex Serif italic pine, double vertical
+               breathing room above and below (this is the pull-quote)
+             · sentence 3 — 20px Plex Serif
+           The .hero-lede paragraph forces flex-column with zero gap so
+           per-line margins control rhythm. font-family is overridden
+           to var(--font-display) (IBM Plex Serif) so all three lines
+           land in the same serif register.
+
+           The chat box stacks vertically: textarea on top, "Ask Carbon
+           →" full-width below (pine fill, paper text, 56px tall). The
+           page-level pulse identity row is hidden — the pulse now only
+           exists in the CarbonChat panel header. */
+        @media (max-width: 480px) {
+          /* Reshape the lede paragraph. */
+          #hero-lede {
+            display: flex !important;
+            flex-direction: column !important;
+            font-family: var(--font-display) !important;
+            font-size: 24px !important;
+            line-height: 1.32 !important;
+          }
+          #hero-lede .hero-lede-s1 {
+            font-size: 24px;
+            color: var(--ink);
+          }
+          #hero-lede .hero-lede-five-unit {
+            display: block;
+            font-size: 32px !important;
+            line-height: 1.18 !important;
+            margin-block: 36px !important;
+            font-family: var(--font-display) !important;
+            font-style: italic !important;
+            color: var(--ember) !important;
+          }
+          #hero-lede .hero-lede-s3 {
+            font-size: 20px;
+            color: var(--ink-2);
+          }
+
+          /* Hide the page-level pulse identity row. */
+          .hero-lede-identity { display: none !important; }
+
+          /* Chat box stacks. */
+          .chat-box {
+            grid-template-columns: 1fr !important;
+          }
+          .chat-text-wrap {
+            padding: 18px 18px 16px !important;
+          }
+          .chat-submit {
+            border-left: 0 !important;
+            border-top: 1px solid var(--ink) !important;
+            height: 56px !important;
+            justify-content: center !important;
+            background: var(--ember) !important;
+            color: var(--paper) !important;
+            font-size: 13px !important;
+            letter-spacing: 0.24em !important;
+          }
         }
       `}</style>
     </section>
