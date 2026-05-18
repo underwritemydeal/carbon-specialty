@@ -173,6 +173,31 @@ describe("normalizeRegridFields — defensive field mapping", () => {
     expect(out.square_feet).toBeUndefined();
     expect(out.owner_of_record).toBeUndefined();
   });
+
+  it("extracts land use code + description, with lbcs fallbacks (C.S.1.6.6)", () => {
+    // Primary fields populated
+    const primary = normalizeRegridFields({
+      usecode: "1100",
+      usedesc: "Single Family Residential",
+    });
+    expect(primary.land_use_code).toBe("1100");
+    expect(primary.land_use_desc).toBe("Single Family Residential");
+
+    // Fallback through LBCS variant when primary is absent
+    const lbcs = normalizeRegridFields({
+      lbcs_function: "1110",
+      lbcs_function_desc: "Multifamily Residential",
+    });
+    expect(lbcs.land_use_code).toBe("1110");
+    expect(lbcs.land_use_desc).toBe("Multifamily Residential");
+
+    // Desc-only — no code returned at all
+    const descOnly = normalizeRegridFields({
+      zoning_description: "Mixed Use Commercial",
+    });
+    expect(descOnly.land_use_code).toBeUndefined();
+    expect(descOnly.land_use_desc).toBe("Mixed Use Commercial");
+  });
 });
 
 describe("buildStreetViewUrl", () => {

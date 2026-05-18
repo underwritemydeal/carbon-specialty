@@ -171,6 +171,8 @@ type RegridFacts = Partial<
     | "lot_size_sqft"
     | "owner_of_record"
     | "parcel_id"
+    | "land_use_code"
+    | "land_use_desc"
   >
 >;
 
@@ -240,6 +242,19 @@ export function normalizeRegridFields(fields: Record<string, unknown>): RegridFa
 
   const parcelId = toString(fields.parcelnumb) ?? toString(fields.ll_uuid);
   if (parcelId) out.parcel_id = parcelId;
+
+  // C.S.1.6.6 — Land use. Regrid surfaces both a raw jurisdiction
+  // code (`usecode`) and a normalized description (`usedesc`). Some
+  // datasets only carry the LBCS function variant. We capture both
+  // when present so the chat tool can lead with the asset-type
+  // inference instead of asking blind.
+  const landUseCode = toString(fields.usecode) ?? toString(fields.lbcs_function);
+  if (landUseCode) out.land_use_code = landUseCode;
+  const landUseDesc =
+    toString(fields.usedesc) ??
+    toString(fields.lbcs_function_desc) ??
+    toString(fields.zoning_description);
+  if (landUseDesc) out.land_use_desc = landUseDesc;
 
   return out;
 }

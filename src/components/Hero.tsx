@@ -314,7 +314,13 @@ export function Hero() {
             <Word key={i} reduce={reduce}>{w}</Word>
           ))}
           <br />
-          <span style={{ display: "inline-block", marginTop: "0.4em" }}>
+          {/* C.S.1.6.6 — `marginTop: "0.4em"` removed. The prior
+              "intentional editorial spacing" pushed "home." ~1.4× a
+              normal line-height below "our cities," reading as a
+              disconnected paragraph break instead of the end of the
+              sentence. Now sits at the natural line-height of the H1
+              so the two lines read continuous. */}
+          <span style={{ display: "inline-block" }}>
             <Accent reduce={reduce} stagger={headlineWords.length}>{HEADLINE_LINE_2}</Accent>
           </span>
         </motion.h1>
@@ -384,22 +390,40 @@ export function Hero() {
         }
 
         /* C.S.1.6.4 — Mobile masthead is wordmark + hamburger only.
-           The entire eyebrow row ("00 — GET A QUOTE" + status pulse +
-           hairline rule) is stripped at ≤480px. The previous C.S.1.6.2
-           pine-rule and tightened-padding rules on .hero-eyebrow are
-           preserved only as a fallback for the 481–600px range where
-           the eyebrow still renders. The status pulse only exists in
-           CarbonChat's header now; nothing page-level above the hero.
+           Eyebrow row stripped at ≤480px. The status pulse only exists
+           in CarbonChat's header now; nothing page-level above the hero.
+           Hero text dominates: section grows to 90vh, headline 64px.
 
-           Hero text dominates: section grows to 90vh, headline scales
-           to 64px display, breathing room maximized.
+           C.S.1.6.6 ROOT-CAUSE FIX for hamburger position. Prior
+           sprints (C.S.1.6.2 / C.S.1.6.5) tried to control the
+           hamburger's offset with margin-right + safe-area-inset
+           gymnastics. None of them worked because the bug wasn't
+           in the hamburger's own box — it was in CSS Grid auto-flow.
 
-           C.S.1.6.5 hardspec — Hamburger margin-right is forced to 0,
-           overriding C.S.1.6.2's negative-margin + safe-area-inset
-           formula. The container already supplies padding-inline of
-           var(--gutter-sm) (16px) at this viewport, so 0 margin puts
-           the hamburger exactly 16px from the viewport edge as the
-           operator hard-specced. Tap target stays 44×44. */
+           .hero-masthead is "display: grid; grid-template-columns:
+           auto 1fr auto; gap: 32px" with four children in source
+           order: [wordmark, nav, hamburger, quote-btn]. On mobile
+           (≤960px) nav + quote-btn get "display: none" which removes
+           them from grid layout entirely. CSS Grid auto-flow then
+           places the remaining two visible children left-to-right:
+           wordmark → col 1 ("auto"), hamburger → col 2 ("1fr"). The
+           hamburger sits at the LEFT edge of the 1fr track (default
+           "justify-self: start"), adjacent to the wordmark with only
+           the 32px column gap separating them. Col 3 ("auto") is
+           empty and collapses to ~0 width, but the 32px gap to its
+           left still phantom-pads the right side. Net result: a fat
+           band of empty space between the hamburger and the right
+           edge — the ~80px gap the operator observed.
+
+           Fix: at ≤480px, drop the grid template and use flexbox
+           "justify-content: space-between" instead. With only two
+           visible children, wordmark sits at container-inner-left
+           (16px from viewport via .container with padding-inline of
+           var(--gutter-sm) = 16px) and hamburger sits at
+           container-inner-right (16px from viewport). The 16px hard
+           spec falls out of the container padding naturally — no
+           magic offsets, no env(safe-area-inset-right), no negative
+           margins. Tap target stays 44×44. */
         @media (max-width: 480px) {
           .hero-eyebrow { display: none !important; }
           .hero-fullbleed { height: 90vh !important; min-height: 560px !important; }
@@ -409,10 +433,16 @@ export function Hero() {
             max-width: 100% !important;
             padding-bottom: 8vh !important;
           }
+          .hero-masthead {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            gap: 0 !important;
+          }
           .hero-hamburger {
             width: 44px !important;
             height: 44px !important;
-            margin-right: 0 !important;
+            margin: 0 !important;
           }
         }
       `}</style>

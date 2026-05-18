@@ -227,11 +227,7 @@ export function HeroLede() {
               }}
             >
               Five units to billion-dollar schedules.
-            </em>{" "}
-            <span className="hero-lede-s3">
-              We take pride in knowing which carriers and programs deliver the broadest
-              coverage and the most competitive rates in every region of the country.
-            </span>
+            </em>
           </motion.p>
 
           {/* Chat box — cols 1-10 */}
@@ -243,6 +239,40 @@ export function HeroLede() {
             transition={{ duration: 0.55, ease: EASE, delay: 0.1 }}
             style={{ display: "flex", flexDirection: "column", gap: 14 }}
           >
+            {/* C.S.1.6.6 — Intake-tool framing. Two-line introduction
+                that names the chat box for what it is (Carbon's intake
+                tool) and explains what it does. Renders on all
+                breakpoints. Spec:
+                  · Heading: 11px Plex Mono, ink, letter-spacing 0.14em
+                  · Subhead: 16px Plex Serif, ink, max-width 32ch */}
+            <div className="hero-lede-intake-tool" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--ink)",
+                }}
+              >
+                Carbon &middot; Intake Tool
+              </span>
+              <p
+                style={{
+                  margin: 0,
+                  fontFamily: "var(--font-display)",
+                  fontSize: 16,
+                  lineHeight: 1.45,
+                  color: "var(--ink)",
+                  maxWidth: "32ch",
+                  textWrap: "pretty",
+                }}
+              >
+                Speak to it or type. Carbon walks you through the intake, captures the
+                facts a specialist needs, and routes you to the right desk.
+              </p>
+            </div>
+
             {/* Agent identity row above the textarea. Hidden on mobile
                 (≤480px) per sprint C.S.1.6.4 — the status pulse only
                 renders inside the CarbonChat panel header now, not as
@@ -552,10 +582,9 @@ export function HeroLede() {
             font-style: italic !important;
             color: var(--ember) !important;
           }
-          #hero-lede .hero-lede-s3 {
-            font-size: 20px;
-            color: var(--ink-2);
-          }
+          /* C.S.1.6.6 — .hero-lede-s3 rule deleted along with the
+              third lede sentence. Body lede ends after the pine
+              italic pull-quote now. */
 
           /* Hide the page-level pulse identity row. */
           .hero-lede-identity { display: none !important; }
