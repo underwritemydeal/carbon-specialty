@@ -89,7 +89,9 @@ describe("enrichAddress", () => {
     expect(facts.year_built).toBe(1962);
     expect(facts.square_feet).toBe(18200);
     expect(facts.construction_type).toBe("Stucco frame");
-    expect(facts.lot_size_sqft).toBe(9583);
+    // C.S.1.7.0b — lot_size_sqft dropped from flat fields (insurance tuning)
+    // @ts-expect-error — field removed from PropertyFacts
+    expect(facts.lot_size_sqft).toBeUndefined();
     expect(facts.owner_of_record).toBe("PINE AVE HOLDINGS LLC");
     expect(facts.parcel_id).toBe("7274-016-013");
     expect(facts.land_use_code).toBe("1104");
@@ -263,7 +265,9 @@ describe("enrichAddress", () => {
     expect(facts.year_built).toBe(1953);
     expect(facts.units).toBe(10);
     expect(facts.building?.use_code).toBe("0500");
-    expect(facts.transaction?.assessed_value).toBe(83785 + 351349);
+    // C.S.1.7.0b — transaction section + assessed_value removed
+    // @ts-expect-error — transaction removed from PropertyFacts
+    expect(facts.transaction).toBeUndefined();
 
     // Verify Realie was NEVER called
     const realieCalls = fetchSpy.mock.calls.filter((c) => {
@@ -441,30 +445,31 @@ describe("normalizeRealieFields — defensive field mapping", () => {
     expect(out.year_built).toBe(1975);
     expect(out.square_feet).toBe(5400);
     expect(out.construction_type).toBe("Wood frame");
-    expect(out.lot_size_sqft).toBe(6500);
+    // C.S.1.7.0b — lot_size_sqft no longer mapped from Realie's landArea
+    // @ts-expect-error — field removed from PropertyFacts
+    expect(out.lot_size_sqft).toBeUndefined();
     expect(out.owner_of_record).toBe("Test Owner");
     expect(out.parcel_id).toBe("abc-123");
     expect(out.land_use_code).toBe("1100");
     expect(out.land_use_desc).toBe("Multifamily Residential");
   });
 
-  it("falls back to acres when landArea is absent", () => {
+  it("does NOT fall back to acres for lot size — entirely dropped in C.S.1.7.0b", () => {
     const out = normalizeRealieFields({
       acres: 0.5,
     });
-    expect(out.lot_size_sqft).toBe(Math.round(0.5 * 43560));
+    // @ts-expect-error — lot_size_sqft removed from PropertyFacts
+    expect(out.lot_size_sqft).toBeUndefined();
   });
 
   it("drops nonsense values (year out of range, zero/blank values)", () => {
     const out = normalizeRealieFields({
       yearBuilt: 999, // out of range
       buildingArea: 0,
-      landArea: 0,
       ownerName: "   ", // blank after trim
     });
     expect(out.year_built).toBeUndefined();
     expect(out.square_feet).toBeUndefined();
-    expect(out.lot_size_sqft).toBeUndefined();
     expect(out.owner_of_record).toBeUndefined();
   });
 

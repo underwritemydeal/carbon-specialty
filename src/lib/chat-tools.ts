@@ -105,6 +105,10 @@ async function executeEnrichProperty(
     // C.S.1.6.6 — land_use_desc is the lead fact for asset-type
     // inference; surface it near the top of the block so the model
     // sees it before the secondary parcel facts.
+    // C.S.1.7.0b insurance tuning — lot size line removed; effective
+    // year + stories + sprinklered + roof lines added when present.
+    // Order optimized for underwriter eye: land use → year(s) → size
+    // → construction quality → SFR detail → owner / id.
     const lines: string[] = [];
     lines.push(`Address (canonical): ${data.canonical_address ?? data.query_address}`);
     if (data.land_use_desc) {
@@ -114,9 +118,18 @@ async function executeEnrichProperty(
     }
     if (typeof data.units === "number") lines.push(`Units: ${data.units}`);
     if (typeof data.year_built === "number") lines.push(`Year built: ${data.year_built}`);
+    if (typeof data.building?.effective_year_built === "number") {
+      lines.push(`Effective year built (post-rehab): ${data.building.effective_year_built}`);
+    }
     if (typeof data.square_feet === "number") lines.push(`Square feet: ${data.square_feet}`);
     if (data.construction_type) lines.push(`Construction: ${data.construction_type}`);
-    if (typeof data.lot_size_sqft === "number") lines.push(`Lot size (sqft): ${data.lot_size_sqft}`);
+    if (typeof data.building?.stories === "number") lines.push(`Stories: ${data.building.stories}`);
+    if (typeof data.building?.sprinklered === "boolean") {
+      lines.push(`Sprinklered: ${data.building.sprinklered ? "yes" : "no"}`);
+    }
+    if (data.building?.roof_type) lines.push(`Roof type: ${data.building.roof_type}`);
+    if (typeof data.building?.bedrooms === "number") lines.push(`Bedrooms: ${data.building.bedrooms}`);
+    if (typeof data.building?.bathrooms === "number") lines.push(`Bathrooms: ${data.building.bathrooms}`);
     if (data.owner_of_record) lines.push(`Owner of record: ${data.owner_of_record}`);
     if (data.parcel_id) lines.push(`Parcel ID: ${data.parcel_id}`);
     if (data.sources_failed.length > 0) {

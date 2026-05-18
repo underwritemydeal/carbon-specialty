@@ -250,7 +250,6 @@ type RealieFacts = Partial<
     | "year_built"
     | "square_feet"
     | "construction_type"
-    | "lot_size_sqft"
     | "owner_of_record"
     | "parcel_id"
     | "land_use_code"
@@ -267,7 +266,8 @@ interface RealieResponse {
   property?: Record<string, unknown>;
 }
 
-const ACRES_TO_SQFT = 43560;
+// (ACRES_TO_SQFT removed in C.S.1.7.0b — lot sizing dropped from
+//  insurance-tuned scope, no longer need the conversion.)
 
 /** useCode → land_use_desc map. Realie's `useCode` is a 4-digit
  *  numeric string; the docs publish the canonical description for
@@ -402,8 +402,8 @@ export async function fetchRealie(
  *  subset. Fields documented at
  *  https://docs.realie.ai/api-reference/property-data-schema
  *  Notes:
- *  - `landArea` is already in square feet (different from Regrid's
- *    acres). Convert from `acres` only as a fallback.
+ *  - `landArea` / `acres` no longer read (C.S.1.7.0b insurance
+ *    tuning dropped lot sizing from PropertyFacts).
  *  - `useCode` is a numeric string code; the mapping to a human-
  *    readable description is published in Realie's docs but NOT
  *    returned by the API. We inline the most-relevant subset
@@ -425,15 +425,9 @@ export function normalizeRealieFields(property: Record<string, unknown>): Realie
   const construction = toString(property.constructionType);
   if (construction) out.construction_type = construction;
 
-  // Lot size — Realie's `landArea` is already in sqft; fall back to
-  // `acres` if `landArea` is absent.
-  const landAreaSqft = toNumber(property.landArea);
-  if (landAreaSqft && landAreaSqft > 0) {
-    out.lot_size_sqft = Math.round(landAreaSqft);
-  } else {
-    const acres = toNumber(property.acres);
-    if (acres && acres > 0) out.lot_size_sqft = Math.round(acres * ACRES_TO_SQFT);
-  }
+  // Lot size mapping removed in C.S.1.7.0b — lot_size_sqft / acreage
+  // is on the insurance-tuning DROP list. Realie still publishes
+  // landArea + acres in the response; we just stop reading them.
 
   const owner = toString(property.ownerName);
   if (owner) out.owner_of_record = owner;

@@ -25,11 +25,35 @@
 
 export type CountyClient = "arcgis" | "socrata";
 
+/**
+ * Insurance-tuned field mapping per county. C.S.1.7.0b dropped the
+ * lot / transaction / tax-exempt families — those are appraisal +
+ * marketing fields, not underwriting fields. What stays:
+ *
+ *   CRITICAL — capture if published:
+ *     useCode + useCodeMap (or useDescField for already-readable codes)
+ *     yearBuilt, buildingSqft, units, constructionType, stories
+ *
+ *   USEFUL — capture when published:
+ *     effectiveYearBuilt (rehab year)
+ *     sprinklered, roofType (rare — most CA assessors don't publish)
+ *     bedrooms, bathrooms (SFR portfolio support)
+ *
+ *   DROP — do not capture even if the source publishes them:
+ *     lotSqft / acreage / Shape__Area
+ *     lastSaleDate / lastSalePrice
+ *     assessedValue (land + improvement)
+ *     taxExempt / homeowner-exemption indicators
+ *
+ * Owner-data fields are retained for the marketing-export use case
+ * (Orange + Riverside publish mailing addresses). Carbon's chat
+ * doesn't surface them; future marketing-export sprint uses them.
+ */
 export interface CACountyFields {
   /** Address. Full-address field preferred when published. */
   address?: string;
 
-  // Building
+  // Building — CRITICAL
   useCode?: string;
   /** Optional inline lookup for the most common use codes. Counties
    *  that publish a paired description (LA does — `UseDescription`)
@@ -41,44 +65,35 @@ export interface CACountyFields {
   useDescField?: string;
   yearBuilt?: string;
   buildingSqft?: string;
-  /** Polygon-derived. ArcGIS exposes `Shape__Area` for polygon layers
-   *  (in sqft when the layer's SRS is in feet). For SRSs in meters,
-   *  callers convert. LA's parcels are published in NAD83 / California
-   *  Albers (meters), but their `Shape__Area` attribute is in sqft per
-   *  the assessor's published convention. */
-  lotSqft?: string;
   units?: string;
   stories?: string;
-  bedrooms?: string;
-  bathrooms?: string;
   constructionType?: string;
   /** Optional supplementary construction-quality field (LA's
    *  `QualityClass1`). When present, concatenated with constructionType
    *  in the human-readable construction_type string. */
   constructionQualityField?: string;
 
-  // Owner — usually undefined for CA per the privacy policy gap
+  // Building — USEFUL
+  /** Year of major rehab / effective age for valuation. LA's
+   *  EffectiveYear1 is the source field where this exists. */
+  effectiveYearBuilt?: string;
+  /** Sprinklered indicator. Not published by any CA county in the
+   *  current registry; field exists so a future inspection-data
+   *  source can populate it. */
+  sprinkleredField?: string;
+  /** Roof type. Not published by any CA county in the current
+   *  registry; field exists so a future inspection-data source can
+   *  populate it. */
+  roofTypeField?: string;
+  bedrooms?: string;
+  bathrooms?: string;
+
+  // Owner — marketing-export reference (Carbon's chat doesn't read)
   ownerName?: string;
   mailingAddress?: string;
   mailingCity?: string;
   mailingState?: string;
   mailingZip?: string;
-  ownershipType?: string;
-  /** Indicator field that resolves to ownership_type ("homeowner-
-   *  occupied" / etc.) when published. LA's `Roll_HomeOwnersExemp`
-   *  non-zero → owner-occupied. */
-  homeownerExemptionField?: string;
-
-  // Transaction
-  lastSaleDate?: string;
-  lastSalePrice?: string;
-  /** When published as two separate land + improvement fields, the
-   *  registry can declare both and the normalizer sums them. LA
-   *  publishes `Roll_LandValue` + `Roll_ImpValue`. */
-  assessedValueField?: string;
-  assessedLandValueField?: string;
-  assessedImpValueField?: string;
-  taxExempt?: string;
 
   // Parcel identifier
   parcelId?: string;
@@ -128,37 +143,33 @@ export const LA_COUNTY: CACountyConfig = {
     // Address
     address: "SitusFullAddress",
 
-    // Building
+    // Building — CRITICAL
     useCode: "UseCode",
     useDescField: "UseDescription",
     yearBuilt: "YearBuilt1",
     buildingSqft: "SQFTmain1",
-    lotSqft: "Shape__Area",
     units: "Units1",
-    bedrooms: "Bedrooms1",
-    bathrooms: "Bathrooms1",
     constructionType: "DesignType1",
     constructionQualityField: "QualityClass1",
-    // stories: undefined — LA doesn't publish
+    // stories: LA doesn't publish — undefined
 
-    // Owner — ALL undefined. LA Assessor policy: owner name +
-    // mailing address are only available via the per-parcel
-    // captcha-protected portal lookup, not public ArcGIS or bulk
-    // data download.
-    ownerName: undefined,
-    mailingAddress: undefined,
-    mailingCity: undefined,
-    mailingState: undefined,
-    mailingZip: undefined,
-    homeownerExemptionField: "Roll_HomeOwnersExemp",
+    // Building — USEFUL
+    // C.S.1.7.0b — `EffectiveYear1` now mapped (LA publishes both
+    // YearBuilt1 and EffectiveYear1; the effective year captures
+    // major rehab). Drives more accurate insurance pricing on older
+    // buildings that were gut-rehabbed.
+    effectiveYearBuilt: "EffectiveYear1",
+    bedrooms: "Bedrooms1",
+    bathrooms: "Bathrooms1",
+    // sprinkleredField / roofTypeField: LA doesn't publish
 
-    // Transaction / valuation
-    // LA splits assessed value into land + improvements; the
-    // normalizer sums them.
-    assessedLandValueField: "Roll_LandValue",
-    assessedImpValueField: "Roll_ImpValue",
-    taxExempt: "Roll_HomeOwnersExemp",
-    // lastSaleDate / lastSalePrice undefined — LA doesn't publish
+    // Owner — undefined. LA Assessor policy: owner name + mailing
+    // address only via the per-parcel captcha-protected portal,
+    // not public ArcGIS or bulk data download. Marketing-export
+    // sprint will need a separate source.
+
+    // (Lot sqft + assessed value + tax-exempt fields removed in
+    //  C.S.1.7.0b — insurance-tuning DROP list.)
 
     // Parcel identifier
     parcelId: "APN",
@@ -204,13 +215,12 @@ export const SAN_DIEGO_COUNTY: CACountyConfig = {
     "https://geo.sandag.org/server/rest/services/Hosted/Parcels/FeatureServer/0",
   defaultRadiusMeters: 50,
   fields: {
-    // Building
+    // Building — CRITICAL
     useCode: "nucleus_use_cd",
     useCodeMap: {
       // Common SanGIS nucleus_use_cd codes — minimal pass-through map.
-      // Sourced from observed records + SanGIS documentation. Unmapped
-      // codes fall through to "Use code XXX" so Carbon's prompt can
-      // still confirm the raw code with the user.
+      // 225-entry SanGIS domain; future sprints expand as Carbon sees
+      // real records.
       "110": "Single Family Residential",
       "120": "Mobile Home",
       "130": "Townhome / Condo",
@@ -223,25 +233,16 @@ export const SAN_DIEGO_COUNTY: CACountyConfig = {
     },
     yearBuilt: "year_effective",
     buildingSqft: "total_lvg_area",
-    lotSqft: "SHAPE__Area",
     units: "unitqty",
-    bedrooms: "bedrooms",
-    bathrooms: "baths",
     // No constructionType — SD doesn't publish a frame/quality field
 
-    // Owner — name/mailing unpublished per the CA privacy gap.
-    // ownerocc is a "Y"/"N" string indicator; we map it via
-    // homeownerExemptionField semantically (non-empty = inferred).
-    // No dedicated handler, so leave undefined for now.
-    ownerName: undefined,
-    mailingAddress: undefined,
-    // No homeownerExemptionField — SD's ownerocc is a string flag we
-    // don't have a readNumber path for. Leave the owner section sparse.
+    // Building — USEFUL
+    bedrooms: "bedrooms",
+    bathrooms: "baths",
 
-    // Transaction
-    // SD already sums land + improvements into asr_total — use it.
-    assessedValueField: "asr_total",
-    // No lastSaleDate / lastSalePrice published in this layer.
+    // Owner — name/mailing unpublished per the CA privacy gap.
+
+    // (Lot sqft + assessed value removed in C.S.1.7.0b — DROP list.)
 
     // Parcel identifier
     parcelId: "apn",
@@ -276,19 +277,18 @@ export const ORANGE_COUNTY: CACountyConfig = {
   fields: {
     address: "SiteAddress",
 
-    // Building
+    // Building — CRITICAL (sparse on this layer)
     useCode: "GPLU_CODE",
     useDescField: "GPLU_DESC",
-    lotSqft: "Shape__Area",
-    // No yearBuilt, buildingSqft, units, bedrooms, bathrooms,
-    // constructionType — not published on this layer.
+    // No yearBuilt / buildingSqft / units / bedrooms / bathrooms /
+    // constructionType / stories — not published on this layer.
+    // Chat asks user for these directly when the address is in OC.
 
-    // Owner — OC publishes mailing address; name still unpublished.
+    // Owner — OC publishes mailing address (marketing-export
+    // reference). Owner name still unpublished.
     mailingAddress: "MailAddress",
 
-    // Transaction
-    assessedLandValueField: "LandVal",
-    assessedImpValueField: "ImprovedVal",
+    // (Lot sqft + assessed value removed in C.S.1.7.0b — DROP list.)
 
     // Parcel identifier
     parcelId: "AssessmentNo",
@@ -339,26 +339,25 @@ export const RIVERSIDE_COUNTY: CACountyConfig = {
   fields: {
     address: "SITUS_STREET",
 
-    // Building
+    // Building — CRITICAL (sparse on this layer)
     // Riverside's CLASS_CODE is a string like "Bank" or "Apartments"
     // — already human-readable. Map directly to land_use_desc via
     // the useDescField mechanism. land_use_code stays undefined.
     useDescField: "CLASS_CODE",
-    lotSqft: "SHAPE.STArea()",
     // No yearBuilt / buildingSqft / units / bedrooms / bathrooms /
-    // constructionType — those live in the joined CREST_PROPERTY_CHAR
-    // table that this single-query path doesn't reach.
+    // constructionType / stories — those live in the joined
+    // CREST_PROPERTY_CHAR table at MapServer/80 that this single-
+    // query path doesn't reach. C.S.1.7.0c can extend CACountyConfig
+    // with a table-join field if Carbon needs them.
 
-    // Owner — Riverside is the first CA county to publish mailing
-    // address via public ArcGIS. ownerName still unpublished (would
-    // require the separate CREST_GENERAL table).
+    // Owner — first CA county in the registry to publish mailing
+    // address via public ArcGIS (notable for the marketing-export
+    // sprint that adds owner data sitewide). Owner name still
+    // unpublished (joined CREST_GENERAL table).
     mailingAddress: "MAIL_STREET",
     mailingCity: "MAIL_CITY", // encodes "city state zip" combined; see header
 
-    // Transaction — Riverside splits assessed value into LAND +
-    // STRUCTURES. Normalizer sums them.
-    assessedLandValueField: "LAND",
-    assessedImpValueField: "STRUCTURES",
+    // (Lot sqft + assessed value removed in C.S.1.7.0b — DROP list.)
 
     // Parcel identifier
     parcelId: "APN",

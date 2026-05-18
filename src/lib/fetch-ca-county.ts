@@ -29,13 +29,16 @@ import type {
   EnrichmentSource,
   OwnerFacts,
   PropertyFacts,
-  TransactionFacts,
 } from "./property-facts";
 
 /** The subset of PropertyFacts this fetcher produces. The caller
  *  (`enrichAddress` in /api/property/enrich/route.ts) merges it into
  *  the larger facts object that also carries canonical_address /
- *  lat / lng / sources_* / street_view_url. */
+ *  lat / lng / sources_* / street_view_url.
+ *
+ *  C.S.1.7.0b — `lot_size_sqft` and `transaction` removed from the
+ *  pickable set. The insurance-tuning sprint reclassified lot/sale/
+ *  assessed-value/tax-exempt fields as out-of-scope. */
 export type CACountyFacts = Partial<
   Pick<
     PropertyFacts,
@@ -43,14 +46,12 @@ export type CACountyFacts = Partial<
     | "year_built"
     | "square_feet"
     | "construction_type"
-    | "lot_size_sqft"
     | "owner_of_record"
     | "parcel_id"
     | "land_use_code"
     | "land_use_desc"
     | "building"
     | "owner"
-    | "transaction"
     | "source_tag"
   >
 >;
@@ -110,7 +111,10 @@ export function normalizeCountyFeature(
   // source tag automatically.
   const out: CACountyFacts = { source_tag: county.slug as EnrichmentSource };
 
-  // ---- Building ---------------------------------------------------------
+  // ---- Building (CRITICAL + USEFUL) ------------------------------------
+  // Insurance-tuned scope: capture what an underwriter needs to price
+  // the schedule. Lot sqft, assessed value, sale data, and tax-exempt
+  // indicators are not on this list — see CACountyFields header.
   const building: BuildingFacts = {};
   if (f.useCode) {
     const code = readString(attrs, f.useCode);
@@ -129,13 +133,13 @@ export function normalizeCountyFeature(
     const y = readNumber(attrs, f.yearBuilt);
     if (y && y > 1700 && y < 2100) building.year_built = y;
   }
+  if (f.effectiveYearBuilt) {
+    const y = readNumber(attrs, f.effectiveYearBuilt);
+    if (y && y > 1700 && y < 2100) building.effective_year_built = y;
+  }
   if (f.buildingSqft) {
     const n = readNumber(attrs, f.buildingSqft);
     if (n && n > 0) building.building_sqft = n;
-  }
-  if (f.lotSqft) {
-    const n = readNumber(attrs, f.lotSqft);
-    if (n && n > 0) building.lot_sqft = Math.round(n);
   }
   if (f.units) {
     const n = readNumber(attrs, f.units);
@@ -164,13 +168,30 @@ export function normalizeCountyFeature(
     if (v) ctParts.push(`quality ${v}`);
   }
   if (ctParts.length) building.construction_type = ctParts.join(" · ");
+  // Sprinklered / roofType — registered USEFUL fields. No current CA
+  // county publishes these; the readers are here so a future
+  // inspection-data source can light them up.
+  if (f.sprinkleredField) {
+    const v = readString(attrs, f.sprinkleredField);
+    if (v) {
+      // Truthy string → true; explicit "no"/"n"/"false"/"0" → false.
+      const low = v.toLowerCase();
+      if (["n", "no", "false", "0"].includes(low)) building.sprinklered = false;
+      else if (["y", "yes", "true", "1"].includes(low)) building.sprinklered = true;
+    }
+  }
+  if (f.roofTypeField) {
+    const v = readString(attrs, f.roofTypeField);
+    if (v) building.roof_type = v;
+  }
   if (hasAnyKey(building)) out.building = building;
 
-  // ---- Owner ------------------------------------------------------------
-  // Mostly undefined for CA — LA Assessor and most CA counties don't
-  // publish owner name or mailing address via public ArcGIS. The fields
-  // are modeled in the registry so a future owner-data source can fill
-  // them without a registry-shape change.
+  // ---- Owner (marketing-export reference, not Carbon chat) ------------
+  // Mostly undefined for CA — LA + SD don't publish owner data;
+  // Orange + Riverside publish mailing address only. Carbon's chat
+  // doesn't surface these; they're staged for the future
+  // marketing-export sprint that adds a separate owner-data source
+  // for owner names.
   const owner: OwnerFacts = {};
   if (f.ownerName) {
     const v = readString(attrs, f.ownerName);
@@ -192,43 +213,7 @@ export function normalizeCountyFeature(
     const v = readString(attrs, f.mailingZip);
     if (v) owner.mailing_zip = v;
   }
-  if (f.ownershipType) {
-    const v = readString(attrs, f.ownershipType);
-    if (v) owner.ownership_type = v;
-  } else if (f.homeownerExemptionField) {
-    // Indicator-only: non-zero exemption → owner-occupied.
-    const v = readNumber(attrs, f.homeownerExemptionField);
-    if (typeof v === "number") {
-      owner.ownership_type = v > 0 ? "homeowner-occupied" : "non-occupant";
-    }
-  }
   if (hasAnyKey(owner)) out.owner = owner;
-
-  // ---- Transaction ------------------------------------------------------
-  const transaction: TransactionFacts = {};
-  if (f.lastSaleDate) {
-    const v = readString(attrs, f.lastSaleDate);
-    if (v) transaction.last_sale_date = v;
-  }
-  if (f.lastSalePrice) {
-    const v = readNumber(attrs, f.lastSalePrice);
-    if (v && v > 0) transaction.last_sale_price = v;
-  }
-  // Assessed value: explicit field wins; else sum land + improvements
-  if (f.assessedValueField) {
-    const v = readNumber(attrs, f.assessedValueField);
-    if (v && v > 0) transaction.assessed_value = v;
-  } else if (f.assessedLandValueField || f.assessedImpValueField) {
-    const land = f.assessedLandValueField ? readNumber(attrs, f.assessedLandValueField) ?? 0 : 0;
-    const imp = f.assessedImpValueField ? readNumber(attrs, f.assessedImpValueField) ?? 0 : 0;
-    const sum = land + imp;
-    if (sum > 0) transaction.assessed_value = sum;
-  }
-  if (f.taxExempt) {
-    const v = readNumber(attrs, f.taxExempt);
-    if (typeof v === "number") transaction.tax_exempt = v;
-  }
-  if (hasAnyKey(transaction)) out.transaction = transaction;
 
   // ---- Parcel ID --------------------------------------------------------
   if (f.parcelId) {
@@ -246,8 +231,8 @@ export function normalizeCountyFeature(
     if (out.building.year_built) out.year_built = out.building.year_built;
     if (out.building.building_sqft) out.square_feet = out.building.building_sqft;
     if (out.building.units) out.units = out.building.units;
-    if (out.building.lot_sqft) out.lot_size_sqft = out.building.lot_sqft;
     if (out.building.construction_type) out.construction_type = out.building.construction_type;
+    // lot_size_sqft removed in C.S.1.7.0b insurance tuning
   }
   if (out.owner?.name) out.owner_of_record = out.owner.name;
 
