@@ -195,12 +195,19 @@ interface RegridResponse {
 
 const ACRES_TO_SQFT = 43560;
 
-/** Default search radius (meters) around the geocoded point. 50m
- *  comfortably covers a building footprint without picking up
- *  neighboring parcels on a typical urban lot, and avoids the
- *  default-0 case in Regrid where lat-lon has to fall exactly on a
- *  parcel boundary to match. */
-export const REGRID_DEFAULT_RADIUS_M = 50;
+/** Default search radius (meters) around the geocoded point.
+ *
+ *  Started at 50m on the assumption a geocoded point would land
+ *  inside the building's parcel polygon. C.S.1.6.7 prod probes
+ *  returned REGRID_EMPTY for all three test addresses at 50m, so
+ *  widened to 1000m. Google often returns a street-midpoint or
+ *  driveway-edge centroid for residential addresses, which can be
+ *  meaningfully off the parcel polygon; 1000m gives a 1km buffer
+ *  and we still take limit=1, so we get the nearest parcel
+ *  regardless. False-positive risk is low — even at 1000m, the
+ *  nearest-by-distance parcel is essentially always the right one
+ *  for a residential or small commercial address. */
+export const REGRID_DEFAULT_RADIUS_M = 1000;
 
 /**
  * Regrid Parcel API — lat/lon point lookup.
@@ -245,12 +252,28 @@ export async function fetchRegrid(
       );
       return null;
     }
-    const data = (await res.json()) as RegridResponse;
+    // Read once as text so we can both parse the JSON and log a
+    // body preview on REGRID_EMPTY. Without this, the empty-features
+    // case had no signal beyond `features=0`, and we couldn't tell
+    // whether Regrid was emitting a "no coverage" body, an account-
+    // scoped warning, or a quirky shape.
+    const rawBody = await res.text();
+    let data: RegridResponse;
+    try {
+      data = JSON.parse(rawBody) as RegridResponse;
+    } catch (e) {
+      console.warn(
+        `[carbon-enrich] REGRID_PARSE_FAIL lat=${lat} lon=${lon} body=${rawBody.slice(0, 200)} err=${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      return null;
+    }
     const fields = data.parcels?.features?.[0]?.properties?.fields;
     if (!fields) {
       const featuresLen = data.parcels?.features?.length ?? 0;
       console.warn(
-        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} lat=${lat} lon=${lon} radius=${radiusMeters}`,
+        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} lat=${lat} lon=${lon} radius=${radiusMeters} body=${rawBody.slice(0, 300)}`,
       );
       return null;
     }
