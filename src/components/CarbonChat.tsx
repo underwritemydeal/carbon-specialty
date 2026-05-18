@@ -7,7 +7,7 @@ import {
   submitIntake,
   buildIntakePayload,
   generateReferenceId,
-  WorkerError,
+  ChatError,
   type ChatMessage,
   type CarbonContactPayload,
 } from "@/lib/carbon-intake";
@@ -37,6 +37,10 @@ export function CarbonChat({
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  // C.S.1.6 — surfaces "looking up property…" in place of the typing-dot
+  // label while the most-recent send is in flight AND the user's message
+  // looked like it might contain an address. Cleared on every reply.
+  const [propertyLookup, setPropertyLookup] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const referenceRef = useRef<string>(generateReferenceId());
@@ -102,24 +106,27 @@ export function CarbonChat({
       setMessages(history);
       track("cs_chat_user_message", { length: text.length });
       setThinking(true);
+      setPropertyLookup(looksLikeAddress(text));
 
       // Retry the conversational turn ONCE on 5xx/network before falling
-      // through to contact-form mode. Auth errors short-circuit immediately.
+      // through to contact-form mode. Auth, bad-shape, and rate-limit
+      // errors short-circuit immediately.
       let attempt = 0;
-      let reply: string | null = null;
-      while (attempt < 2 && reply === null) {
+      let result: { text: string; toolsExecuted: string[] } | null = null;
+      while (attempt < 2 && result === null) {
         try {
-          reply = await askCarbonIntake(history);
+          result = await askCarbonIntake(history);
         } catch (e) {
-          if (e instanceof WorkerError) {
-            if (e.kind === "auth" || e.kind === "no-endpoint" || e.kind === "bad-shape") {
-              // Auth/config issues won't fix on retry — fall through immediately.
+          if (e instanceof ChatError) {
+            if (e.kind === "auth" || e.kind === "bad-shape" || e.kind === "rate-limit") {
+              // Won't fix on retry — fall through immediately.
               setMode("contact-form");
               setThinking(false);
+              setPropertyLookup(false);
               track("cs_chat_fallback_mode", { reason: e.kind });
               return;
             }
-            // network / server — retry once
+            // network / server / tool-fail — retry once
             if (attempt === 0) {
               attempt += 1;
               await new Promise((r) => setTimeout(r, 600));
@@ -127,24 +134,29 @@ export function CarbonChat({
             }
             setMode("contact-form");
             setThinking(false);
+            setPropertyLookup(false);
             track("cs_chat_fallback_mode", { reason: e.kind });
             return;
           }
           // Unknown error type — fall through too
           setMode("contact-form");
           setThinking(false);
+          setPropertyLookup(false);
           return;
         }
       }
-      if (reply == null) {
+      if (result == null) {
         setMode("contact-form");
         setThinking(false);
+        setPropertyLookup(false);
         return;
       }
 
+      const reply = result.text;
       const after: ChatMessage[] = [...history, { role: "assistant", content: reply }];
       setMessages(after);
       setThinking(false);
+      setPropertyLookup(false);
 
       // Wrap-up sentinel detected → run extraction + submit
       if (reply.includes(INTAKE_WRAPUP_SENTINEL) && !submitted) {
@@ -376,6 +388,18 @@ export function CarbonChat({
               >
                 Carbon
               </span>
+              {propertyLookup && (
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    letterSpacing: "0.04em",
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  Looking up property…
+                </span>
+              )}
               <Typing />
             </div>
           )}
@@ -700,6 +724,22 @@ function Message({ role, content }: { role: "user" | "assistant"; content: strin
       </div>
     </div>
   );
+}
+
+/** Heuristic: does this user message read like it contains a property
+ *  address? Used only to surface the "looking up property…" status
+ *  line while the chat is waiting on Anthropic. False negatives are
+ *  fine — the chat still works either way. */
+function looksLikeAddress(text: string): boolean {
+  // A street number + a word is the strongest signal.
+  if (/\b\d{1,6}\s+[A-Za-z]/.test(text)) return true;
+  // City/state hint: a word followed by a 2-letter US state code.
+  if (/[A-Za-z]+,?\s+(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/i.test(text)) {
+    return true;
+  }
+  // A 5-digit ZIP near the end of a short message.
+  if (text.length < 200 && /\b\d{5}(?:-\d{4})?\b/.test(text)) return true;
+  return false;
 }
 
 function Typing() {

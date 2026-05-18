@@ -1,28 +1,27 @@
 /**
- * Carbon intake — sprint C.S.1.4.
+ * Carbon intake — sprint C.S.1.4 / updated C.S.1.6.
  *
  * Three concerns:
  *
- *   1. `askCarbonIntake` runs a conversational turn against the Covr
- *      Worker using the CARBON_INTAKE_SYSTEM_PROMPT.
+ *   1. `askCarbonIntake` runs a conversational turn against the
+ *      in-app /api/chat route (which calls Anthropic Messages API
+ *      directly with the Carbon intake system prompt and the
+ *      `enrich_property` tool registered). Replaces the C.S.1.4 Covr
+ *      Worker integration — see AGENTS.md "Chat architecture
+ *      (post-C.S.1.6)".
  *   2. `extractIntakePayload` runs the SECOND call once the wrap-up
- *      sentinel fires — same Worker, different system prompt, returns
- *      a structured `CarbonIntakePayload`.
+ *      sentinel fires — same /api/chat route, mode: "extract",
+ *      returns a structured `CarbonIntakePayload`.
  *   3. `submitIntake` persists the payload. Forward-compat path: if
  *      `NEXT_PUBLIC_LEADS_ENDPOINT_READY` is `"true"`, POST to the
  *      Worker's `/leads/inbound`. Otherwise (always, today) POST to
  *      the in-app `/api/lead-fallback` route, which emails via Resend.
  *
- * All Worker calls share `callWorker` so error classification (401/403
- * auth, 5xx server, network) lives in one place. Callers consume the
- * structured `WorkerError` to decide whether to retry or fall back to
- * the contact-form mode in CarbonChat.
+ * All chat calls share `callChat` so error classification (auth,
+ * rate-limit, server, network, bad-shape, tool-fail) lives in one
+ * place. Callers consume the structured `ChatError` to decide whether
+ * to retry or fall back to the contact-form mode in CarbonChat.
  */
-
-import {
-  CARBON_INTAKE_SYSTEM_PROMPT,
-  CARBON_EXTRACTION_SYSTEM_PROMPT,
-} from "./carbon-system-prompt";
 
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string };
@@ -88,13 +87,25 @@ export interface CarbonFormPayload {
 
 export type LeadPayload = CarbonIntakePayload | CarbonContactPayload | CarbonFormPayload;
 
-export type WorkerErrorKind = "no-endpoint" | "auth" | "server" | "network" | "bad-shape";
-export class WorkerError extends Error {
-  constructor(public kind: WorkerErrorKind, message: string) {
+export type ChatErrorKind =
+  | "auth"
+  | "rate-limit"
+  | "server"
+  | "network"
+  | "bad-shape"
+  | "tool-fail";
+
+export class ChatError extends Error {
+  constructor(public kind: ChatErrorKind, message: string) {
     super(message);
-    this.name = "WorkerError";
+    this.name = "ChatError";
   }
 }
+
+/** @deprecated Renamed in C.S.1.6 — alias kept for any external import. */
+export { ChatError as WorkerError };
+/** @deprecated Renamed in C.S.1.6. */
+export type WorkerErrorKind = ChatErrorKind;
 
 // =============================================================================
 // Reference ID
@@ -112,86 +123,97 @@ export function generateReferenceId(now: Date = new Date()): string {
 }
 
 // =============================================================================
-// Worker call — single point of error classification
+// Chat call — single point of error classification
 // =============================================================================
 
-const WORKER_BASE = () => (process.env.NEXT_PUBLIC_COVR_API_URL ?? "").replace(/\/$/, "");
+interface ChatEnvelope {
+  ok: boolean;
+  text?: string;
+  tools_executed?: string[];
+  property_facts?: unknown;
+  error?: string;
+  error_kind?:
+    | "BAD_REQUEST"
+    | "ANTHROPIC_AUTH"
+    | "ANTHROPIC_RATE_LIMIT"
+    | "ANTHROPIC_SERVER"
+    | "TOOL_EXECUTION_FAIL"
+    | "LOOP_EXHAUSTED";
+}
 
-async function callWorker(payload: {
-  systemPrompt: string;
+/**
+ * Posts to the in-app /api/chat route and returns the assistant text.
+ * Throws `ChatError` so callers can retry or fall back deterministically.
+ */
+async function callChat(payload: {
   messages: ChatMessage[];
-}): Promise<string> {
-  const base = WORKER_BASE();
-  if (!base) throw new WorkerError("no-endpoint", "NEXT_PUBLIC_COVR_API_URL is not set");
-
-  const url = `${base}/v1/messages`;
-  // Same shape Covr uses: prepend the system prompt as a user-role first
-  // message so the Worker can stay a simple proxy.
-  const body = {
-    messages: [
-      { role: "user" as const, content: payload.systemPrompt },
-      ...payload.messages,
-    ],
-  };
-
+  mode: "intake" | "extract";
+}): Promise<{ text: string; toolsExecuted: string[] }> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
   } catch (e) {
-    // fetch() throws on network/CORS/DNS failures
-    throw new WorkerError("network", e instanceof Error ? e.message : String(e));
+    throw new ChatError("network", e instanceof Error ? e.message : String(e));
   }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new WorkerError("auth", `Worker returned ${res.status}`);
-  }
-  if (res.status >= 500) {
-    throw new WorkerError("server", `Worker returned ${res.status}`);
-  }
-  if (!res.ok) {
-    throw new WorkerError("server", `Worker returned ${res.status}`);
+  let data: ChatEnvelope | null = null;
+  try {
+    data = (await res.json()) as ChatEnvelope;
+  } catch {
+    throw new ChatError("bad-shape", `Non-JSON response (HTTP ${res.status})`);
   }
 
-  const data = (await res.json().catch(() => null)) as
-    | { content?: { text?: string }[] | string; reply?: string; message?: string }
-    | string
-    | null;
-
-  if (data == null) throw new WorkerError("bad-shape", "Empty Worker response");
-  if (typeof data === "string") return data;
-  if (Array.isArray(data.content)) {
-    return data.content
-      .map((b) => (typeof b === "string" ? b : b?.text ?? ""))
-      .join("")
-      .trim();
+  if (!data || typeof data !== "object") {
+    throw new ChatError("bad-shape", `Empty response (HTTP ${res.status})`);
   }
-  if (typeof data.content === "string") return data.content;
-  if (data.reply) return data.reply;
-  if (data.message) return data.message;
-  throw new WorkerError("bad-shape", "Unrecognized Worker response shape");
+
+  if (!data.ok) {
+    const kind = data.error_kind;
+    if (kind === "ANTHROPIC_AUTH" || kind === "BAD_REQUEST") {
+      throw new ChatError("auth", data.error ?? `Auth/config failure (HTTP ${res.status})`);
+    }
+    if (kind === "ANTHROPIC_RATE_LIMIT") {
+      throw new ChatError("rate-limit", data.error ?? "Rate-limited");
+    }
+    if (kind === "TOOL_EXECUTION_FAIL") {
+      throw new ChatError("tool-fail", data.error ?? "Tool execution failed");
+    }
+    // ANTHROPIC_SERVER, LOOP_EXHAUSTED, unknown → treat as server
+    throw new ChatError(
+      "server",
+      data.error ?? `Chat service returned HTTP ${res.status}`,
+    );
+  }
+
+  const text = typeof data.text === "string" ? data.text : "";
+  if (!text) throw new ChatError("bad-shape", "Chat returned empty text");
+  return { text, toolsExecuted: data.tools_executed ?? [] };
 }
 
 // =============================================================================
 // Public API
 // =============================================================================
 
-/** Runs a single conversational turn through the Worker using the
- *  Carbon intake system prompt. Returns the assistant's reply. */
-export async function askCarbonIntake(history: ChatMessage[]): Promise<string> {
-  return callWorker({
-    systemPrompt: CARBON_INTAKE_SYSTEM_PROMPT,
-    messages: history,
-  });
+/** Runs a single conversational turn through /api/chat using the
+ *  Carbon intake system prompt. Returns the assistant's reply plus
+ *  the list of tools the server-side loop executed (so the chat UI
+ *  can surface "looking up property…" status when applicable). */
+export async function askCarbonIntake(
+  history: ChatMessage[],
+): Promise<{ text: string; toolsExecuted: string[] }> {
+  return callChat({ mode: "intake", messages: history });
 }
 
 /** Runs the extraction call. Sends the full transcript as one user message
- *  with the extraction prompt, parses the JSON response, returns the
- *  structured payload (without the conversation_full / source / timestamp
- *  envelope — caller adds those). Throws WorkerError on bad shape. */
+ *  with mode: "extract" so /api/chat uses the extraction system prompt
+ *  and skips the tool registry. Parses the JSON response and returns
+ *  the structured payload (without the conversation_full / source /
+ *  timestamp envelope — caller adds those). Throws ChatError on bad
+ *  shape. */
 export async function extractIntakePayload(
   history: ChatMessage[],
 ): Promise<Omit<CarbonIntakePayload, "conversation_full" | "source" | "submitted_at" | "reference_id">> {
@@ -199,8 +221,8 @@ export async function extractIntakePayload(
     .map((m) => `[${m.role}] ${m.content}`)
     .join("\n\n");
 
-  const raw = await callWorker({
-    systemPrompt: CARBON_EXTRACTION_SYSTEM_PROMPT,
+  const { text: raw } = await callChat({
+    mode: "extract",
     messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
   });
 
@@ -214,10 +236,10 @@ export async function extractIntakePayload(
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new WorkerError("bad-shape", "Extraction did not return parseable JSON");
+    throw new ChatError("bad-shape", "Extraction did not return parseable JSON");
   }
   if (!parsed || typeof parsed !== "object") {
-    throw new WorkerError("bad-shape", "Extraction returned non-object JSON");
+    throw new ChatError("bad-shape", "Extraction returned non-object JSON");
   }
 
   // Conservatively normalize: ensure asset_type, location, contact exist.
