@@ -49,6 +49,15 @@ Adds typeahead address suggestions to the CarbonChat textarea. Wires `google.map
 
 API key: reuses `GOOGLE_MAPS_API_KEY` exposed client-side as `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`. The two-key hygiene pattern (separate referrer-restricted client key) was considered and deferred — single-key reuse was the chosen path for speed.
 
+### C.S.1.6.2 — Inworld TTS wiring + voice UX + mobile polish
+Adds Carbon's first voice surface and a mobile masthead/typography polish pass. One PR, three deliverables.
+
+- **Inworld TTS integration.** New `/api/tts` route (Node runtime, `maxDuration` 30s) calls `POST https://api.inworld.ai/tts/v1/voice` with `Authorization: Basic ${INWORLD_API_KEY}` (key is the already-base64-encoded `client_id:client_secret`). Model: `inworld-tts-1-5-mini`. Voice: `Reed`. Audio out: MP3, 24 kHz, 64 kbps streamed back as `audio/mpeg` binary. Client surface in `src/lib/voice-client.ts` (`playTTS` / `stopTTS`). Wrap-up sentinel scrubbed before synthesis. In-memory rate limit of 30 calls per 10 min per IP. Graceful degradation: missing `INWORLD_API_KEY` → 503 `NO_KEY`, chat stays fully usable, voice surfaces silently no-op. Full details in `CARBON_TECH.md` → *Voice (Inworld TTS)*.
+- **Voice UX in CarbonChat.** Mic button right side of the chat input (before the send arrow). Web Speech API STT, continuous + interim results; interim transcript renders over the textarea at opacity 0.6 via a mirror-div overlay. Feature-detect on mount: if unsupported (primarily iOS Chrome), the mic button is hidden and a mono caption renders "VOICE INPUT — SAFARI OR CHROME DESKTOP." Voice-initiated user turns are tracked in a ref-Set; Carbon's reply to a voice turn auto-plays once (`autoPlayedRef` dedupe). Text-initiated Carbon messages render a "LISTEN →" affordance that plays on tap (pine while in flight). No autoplay on text-initiated sessions — iOS blocks it.
+- **Mobile polish at ≤480px.** Masthead row tightens (eyebrow `padding-top`/`margin-top` halved, status-line gap dropped from 6px → 3px). Hamburger widens to a 44×44 tap target and pulls flush to `env(safe-area-inset-right)`. Wordmark `wm-name` scaled 28px → 23px (~17% reduction); `wm-sub` letter-spacing tightened 0.55em → 0.42em. The rule-slot beneath "RB" in the over-video wordmark switches from paper to pine. The hairline rule below the masthead switches from translucent-paper to pine, 1px. The "Five-unit walk-ups to billion-dollar schedules." italic in HeroLede shifts to pine. Hero-to-lede top padding reduced 48 → 36 (~25%).
+
+New env var: `INWORLD_API_KEY` (set on Vercel Preview + Production before prod deploy). All other deliverables are zero-config.
+
 ## Planned (next-up, in order)
 
 ### C.S.1.7 — Rate-band intake rewrite

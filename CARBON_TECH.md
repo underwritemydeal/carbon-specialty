@@ -89,6 +89,44 @@
 - Per-conversation cap not currently enforced. Add if abuse patterns emerge.
 - Errors caught in 6 categories and logged with `[carbon-chat]` prefix in Vercel runtime logs.
 
+### Voice (Inworld TTS) — sprint C.S.1.6.2
+
+Carbon's chat replies can be spoken aloud. Two triggers:
+
+1. **Auto-play** on assistant turns that replied to a voice-initiated user turn (the user tapped the mic in `CarbonChat.tsx` to dictate).
+2. **Manual** via a "LISTEN →" affordance below every Carbon message in a text-initiated session. Tap-to-play; one playback at a time, new plays preempt the previous.
+
+The Inworld client lives in **`src/lib/inworld-tts.ts`** and is consumed only by **`src/app/api/tts/route.ts`** (POST `{ text, voice? }` → `audio/mpeg` binary). The browser-side player lives in **`src/lib/voice-client.ts`** as `playTTS()` / `stopTTS()`.
+
+| Field | Value |
+| --- | --- |
+| Endpoint | `POST https://api.inworld.ai/tts/v1/voice` |
+| Auth header | `Authorization: Basic ${INWORLD_API_KEY}` (key is already base64-encoded `client_id:client_secret`) |
+| Model | `inworld-tts-1-5-mini` (operator-selected; cheap + fast for chat-length replies) |
+| Voice | `Reed` (operator-selected default; per-request override via `voice` param) |
+| Audio out | MP3, 24 kHz, 64 kbps |
+| Env var | `INWORLD_API_KEY` |
+| Max text per call | 1500 chars (`INWORLD_MAX_TEXT_CHARS`); longer input is truncated on a sentence boundary |
+| Wrap-up sentinel | The intake sentinel ("I have what a specialist needs to start.") is stripped before synthesis so it never plays aloud |
+
+**Rate limiting.** `/api/tts` enforces an in-memory per-IP cap of **30 calls per 10 min** (`RATE_WINDOW_MS=10*60*1000`, `RATE_MAX=30` in `src/app/api/tts/route.ts`). Per-Fluid-Compute-instance only — not a global rate limit. Sufficient as an abuse brake; not a billing guarantee. The model is selected for low cost-per-character to keep the worst case bounded.
+
+**Pipeline location.** Auto-play fires from a `useEffect` in `CarbonChat.tsx` that watches the `messages` array, checks `voiceTurnsRef` for membership of the last index, and calls `playTTS()` exactly once per assistant message (`autoPlayedRef` dedupe). Manual playback fires from the "LISTEN →" button's `onClick` and toggles a `manualPlaying` state so the affordance reads "Playing…" in pine while audio is in flight.
+
+**Graceful degradation.**
+
+| State | Behavior |
+| --- | --- |
+| `INWORLD_API_KEY` missing | `/api/tts` returns 503 `NO_KEY`. Chat stays fully usable; LISTEN affordance and auto-play silently no-op (logs warning). |
+| Inworld 401/403 | 503 `INWORLD_AUTH`. Same client behavior. |
+| Inworld 429 or local rate-limit | 429 `RATE_LIMIT`. Client logs and skips. |
+| Inworld 5xx / network | 502 `INWORLD_UPSTREAM`. Client logs and skips. |
+| iOS Chrome (no `webkitSpeechRecognition`) | Mic button hidden. Mono caption renders: `VOICE INPUT — SAFARI OR CHROME DESKTOP`. TTS playback still works on manual tap (LISTEN buttons render). |
+
+**Cost shape.** At Inworld's published TTS-1.5 Mini pricing tier, a typical 60-char Carbon reply is fractions of a cent; a worst-case wrap-up message (~1500 chars) is still well under a cent. Total exposure scales with chat volume × autoplay rate; the per-IP cap blunts adversarial loops.
+
+**Future migration note.** The current implementation owns its own /api route. If Carbon adopts an audio-streaming UI (e.g., partial playback while the model is still generating), the streaming endpoint (`POST https://api.inworld.ai/tts/v1/voice:stream`, NDJSON) is the swap target. The client surface (`playTTS`) was kept narrow so that change wouldn't touch `CarbonChat.tsx`.
+
 ## Google Cloud project
 
 - Project name: `carbon-specialty`
