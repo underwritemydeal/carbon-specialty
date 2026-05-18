@@ -1,24 +1,24 @@
 # Carbon Specialty — Master Brief
 
-**Last updated: May 17, 2026**
+**Last updated: 2026-05-18 (Sprint C.S.1.6.5 — nationwide pivot + home Coverage / `/coverage` kill)**
 
 ## What it is
 
-Carbon Specialty is an AI-native real estate insurance brokerage focused on the buildings that make American cities work — multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings. The placement scope runs from five-unit walk-ups to billion-dollar schedules, across admitted markets, surplus lines, and specialty programs.
+Carbon Specialty is an AI-native real estate insurance brokerage specializing in real estate insurance for **investment property owners** — multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings. The placement scope runs from five units to billion-dollar schedules, across admitted markets, surplus lines, and specialty programs.
 
 The thesis is editorial in tone and operational in execution: real estate insurance has been transacted through faxes, PDF supplements, and bilateral phone calls for thirty years, and the buyer side (owners, GPs, asset managers) is increasingly impatient with that experience. Carbon's wedge is an AI-led intake that produces a quoteable submission packet in minutes instead of days, paired with specialist humans behind it doing the actual placement work.
 
 ## Geographic scope
 
-Phase 1: Western US — California, Arizona, Nevada, Oregon, Washington, Idaho, Utah, Colorado, New Mexico. Nine states. This is a deliberate constraint, not a limitation. The Western US concentrates the multifamily asset class Carbon targets and matches the operating geography of the founding team's existing book.
+**Nationwide.** Carbon places real estate insurance for investment property owners in every region of the country, using direct admitted appointments where available and wholesale or program partners where the right market lives elsewhere. The marketing-positioning constraint of "Phase 1: Western US" was retired in C.S.1.6.5 — the operator's framing is that Carbon's job is to know which carrier or program delivers the broadest coverage and the most competitive rates in any region.
 
-Phase 2 (12-18 months out): Expand via Distinguished + Honeycomb wholesale relationships into Texas, Florida, and the Southeast. Wholesale gives Carbon market access without needing direct carrier appointments in every state.
+**Licensure** (separate from placement footprint, intentionally narrower for legal accuracy): Carbon Specialty Insurance Services is California-domiciled with multi-state direct-appointment extensions. The literal licensed-state enumeration lives in `/terms` as a statement of fact and is the authoritative legal scope. Marketing surfaces (`/`, `/about`, `/what-we-write`, `/insights`, footer, metadata, OG, llms.txt) read "nationwide" via wholesale and program partners.
 
 ## Operating structure
 
 - **AMS**: NowCerts (chosen for API access and modern data model — alternatives EZLynx and Applied Epic were rejected for closed-system constraints).
-- **Cluster**: PIIB for direct carrier appointments in the nine Western states. Direct appointments give Carbon access to admitted markets, contingent commissions, and direct loss-ratio data.
-- **Wholesale**: Distinguished + Honeycomb for surplus lines and specialty programs. Carbon does not need direct E&S appointments for Phase 1.
+- **Cluster**: PIIB for direct carrier appointments in Carbon's directly-licensed states. Direct appointments give Carbon access to admitted markets, contingent commissions, and direct loss-ratio data.
+- **Wholesale**: Distinguished + Honeycomb for surplus lines and specialty programs — the path to nationwide placement outside the direct-appointment footprint.
 - **Carrier mix posture**: Open architecture. Carbon places business where the risk fits best, not where commission is highest. This is a stated value proposition to buyers.
 
 ## Founding team
@@ -29,7 +29,7 @@ Three co-founders. Robby Hess is the technical co-founder building the platform 
 
 ## Target customer profile
 
-- **Primary**: Property owners and asset managers operating 5-500 unit multifamily portfolios in the Western US. Sweet spot: $50M-$500M total insured value.
+- **Primary**: Investment property owners and asset managers operating 5-500 unit multifamily portfolios, nationwide. Sweet spot: $50M-$500M total insured value.
 - **Secondary**: HOAs, mixed-use buildings, SFR portfolio operators, small-to-mid apartment syndicators.
 - **Buyer persona**: Typically the GP, asset manager, or in-house insurance lead at a sponsor or operator. Sophisticated enough to compare quotes intelligently. Frustrated by the 2-4 week submission-to-quote turnaround at traditional brokerages. Open to AI-led intake if it materially reduces their hours invested.
 
@@ -55,6 +55,9 @@ Design system reference: CARBON_DESIGN.md.
 - Not a carrier. Carbon does not take risk.
 - Not an MGA. Carbon does not have binding authority.
 - Not a chat-only experience. The AI intake is the front door; specialists do the actual brokerage work.
-- Not a national play in Phase 1. Western US only until the operational model is proven.
 - Not bound to one AMS or one cluster. The current stack is a deliberate choice but not a religion.
 - Not affiliated with Trucordia, Golden State, Covr AI, or any other Robby venture. Separate cap table, separate brand, separate compliance scope.
+
+## Site structure (post-C.S.1.6.5)
+
+The home page reads: hero → operator-approved three-line body lede with pine-italic pull-quote → mobile-dominant CarbonChat affordance → Position → AssetClasses → CarrierBar → Process → FAQ → Footer. The standalone Coverage section (three umbrella chapters with "All coverages →" link) was killed; the standalone `/coverage` route (twelve editorial chapters) was also killed. Carbon's coverage menu now lives implicitly in CarbonChat conversation and in `/what-we-write` asset-class detail — not as a marketing index page. The hamburger nav drops the `Coverage` slot accordingly.

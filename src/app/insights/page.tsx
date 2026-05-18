@@ -34,7 +34,7 @@ export default function InsightsIndexPage() {
               Notes from the <em style={{ fontStyle: "italic" }}>underwriter&apos;s desk</em>.
             </>
           }
-          lede="Carbon Specialty publishes practical writing on real estate insurance — earthquake DIC, habitational umbrella, vacant property, builders risk, mid-term broker-of-record changes — for owners and operators across California and the Western United States."
+          lede="Carbon Specialty publishes practical writing on real estate insurance — earthquake DIC, habitational umbrella, vacant property, builders risk, mid-term broker-of-record changes — for investment property owners and operators nationwide."
         >
           <article
             className="card"

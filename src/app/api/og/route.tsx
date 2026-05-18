@@ -5,7 +5,7 @@ export const runtime = "edge";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const title = searchParams.get("title") ?? "Carbon Specialty";
-  const sub = searchParams.get("sub") ?? "Real estate insurance · California-led · Western United States";
+  const sub = searchParams.get("sub") ?? "Real estate insurance for investment property owners · Nationwide";
 
   return new ImageResponse(
     (
@@ -77,7 +77,7 @@ export async function GET(req: Request) {
           }}
         >
           <span>carbonspecialty.com</span>
-          <span style={{ color: "#1F4D38" }}>Real estate insurance · Western United States</span>
+          <span style={{ color: "#1F4D38" }}>Real estate insurance · Nationwide</span>
         </div>
       </div>
     ),

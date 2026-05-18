@@ -317,20 +317,22 @@
   .wordmark .wm-mark { padding-bottom: 8px; }
 }
 
-/* C.S.1.6.2 — Mobile wordmark polish at ≤480px.
-   - CARBON scaled down ~17% (28px → 23px) so it leaves room for the
-     wider hamburger and breathes against the eyebrow status row.
-   - SPECIALTY · INSURANCE letter-spacing tightened from 0.55em → 0.42em
-     so the sub-line reads as a confident, dense rule rather than a
-     sparse trail.
-   - Rule slot under "RB" recolored to pine in the over-video variant
-     (was paper) — pine reads as an editorial mark on the dark hero
-     and matches the eyebrow rule that now sits below it. */
+/* C.S.1.6.5 — Mobile wordmark hard specs at ≤480px.
+   Operator override of C.S.1.6.2 sizing — the 17% reduction (23px)
+   still read too large. Hard specs this time:
+   - CARBON font-size: 28px.
+   - SPECIALTY · INSURANCE subtitle: display:none. Mobile masthead is
+     wordmark left + hamburger right, nothing else.
+   - .wm-mark padding-bottom drops to 0 since the sub-line is gone.
+   - Pine RB-rule retained from C.S.1.6.2 (over-video variant only).
+   These selectors carry !important to win over both the older
+   @media (max-width: 375px) block above and the base .wordmark.sm
+   rules, regardless of source order. */
 @media (max-width: 480px) {
-  .wordmark .wm-name { font-size: 23px; letter-spacing: 0.28em; padding-left: 0.28em; }
-  .wordmark .wm-sub  { font-size: 8px; margin-top: 7px; letter-spacing: 0.42em; padding-left: 0.42em; }
-  .wordmark .wm-rule { width: 40px; }
-  .wordmark .wm-mark { padding-bottom: 7px; }
+  .wordmark .wm-name { font-size: 28px !important; letter-spacing: 0.28em !important; padding-left: 0.28em !important; }
+  .wordmark .wm-sub  { display: none !important; }
+  .wordmark .wm-rule { width: 48px !important; }
+  .wordmark .wm-mark { padding-bottom: 0 !important; }
   .wordmark.over-video .wm-rule { background: var(--ember); }
 }
 

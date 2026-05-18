@@ -40,16 +40,16 @@ export const metadata: Metadata = {
     template: "%s — Carbon Specialty",
   },
   description:
-    "Carbon Specialty is an independent insurance brokerage focused on real estate and apartment building insurance — multifamily, mixed-use, SFR portfolios, HOAs, and builders risk — across California and the Western United States.",
+    "Carbon Specialty is an independent insurance brokerage specializing in real estate insurance for investment property owners — multifamily, mixed-use, SFR portfolios, HOAs, and builders risk — nationwide.",
   applicationName: "Carbon Specialty",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "Carbon Specialty",
     url: SITE_URL,
-    title: "Carbon Specialty — Real estate and apartment building insurance",
+    title: "Carbon Specialty — Real estate insurance for investment property owners",
     description:
-      "Independent brokerage focused on real estate and apartment building insurance across California and the Western United States.",
+      "Independent brokerage specializing in real estate insurance for investment property owners — nationwide.",
     images: [{ url: "/api/og?title=Carbon%20Specialty", width: 1200, height: 630 }],
   },
   twitter: {

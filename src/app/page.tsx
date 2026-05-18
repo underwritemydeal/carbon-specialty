@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/Hero";
 import { HeroLede } from "@/components/HeroLede";
-import { CoverageSection } from "@/components/CoverageCards";
 import { Position } from "@/components/Position";
 import { AssetClassesGrid } from "@/components/AssetClasses";
 import { CarrierBar } from "@/components/CarrierBar";
@@ -19,9 +18,9 @@ import {
 } from "@/lib/schema";
 
 export const metadata: Metadata = {
-  title: "Real estate and apartment building insurance — California & the Western US",
+  title: "Real estate insurance for investment property owners — nationwide",
   description:
-    "Carbon Specialty is an independent insurance brokerage focused on real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings across California and the Western United States.",
+    "Carbon Specialty specializes in real estate insurance for investment property owners. Five units to billion-dollar schedules — multifamily, mixed-use, SFR portfolios, HOAs, and apartment buildings, nationwide.",
   alternates: { canonical: "/" },
 };
 
@@ -40,7 +39,6 @@ export default function HomePage() {
       <main id="main">
         <Hero />
         <HeroLede />
-        <CoverageSection />
         <Position />
         <AssetClassesGrid />
         <CarrierBar />

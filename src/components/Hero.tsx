@@ -170,12 +170,10 @@ export function Hero() {
           </Link>
 
           <nav aria-label="Primary" className="hero-nav" style={{ display: "flex", justifyContent: "center", gap: 32 }}>
-            {/* C.S.1.6.3 — "Coverage" inserted at slot 2, matching the
-                Header NAV array. Same order across all primary nav
-                surfaces (hero masthead, inner-page header, footer). */}
+            {/* C.S.1.6.5 — `Coverage` removed (route killed). Order
+                matches Header NAV across all primary nav surfaces. */}
             {[
               { label: "What we write", href: "/what-we-write" },
-              { label: "Coverage", href: "/coverage" },
               { label: "How it works", href: "/how-it-works" },
               { label: "About", href: "/about" },
               { label: "Insights", href: "/insights" },
@@ -393,11 +391,15 @@ export function Hero() {
            the eyebrow still renders. The status pulse only exists in
            CarbonChat's header now; nothing page-level above the hero.
 
-           Hamburger keeps its 44×44 tap target + safe-area-inset
-           flush-right behavior from C.S.1.6.2.
-
            Hero text dominates: section grows to 90vh, headline scales
-           to 64px display, breathing room maximized. */
+           to 64px display, breathing room maximized.
+
+           C.S.1.6.5 hardspec — Hamburger margin-right is forced to 0,
+           overriding C.S.1.6.2's negative-margin + safe-area-inset
+           formula. The container already supplies padding-inline of
+           var(--gutter-sm) (16px) at this viewport, so 0 margin puts
+           the hamburger exactly 16px from the viewport edge as the
+           operator hard-specced. Tap target stays 44×44. */
         @media (max-width: 480px) {
           .hero-eyebrow { display: none !important; }
           .hero-fullbleed { height: 90vh !important; min-height: 560px !important; }
@@ -410,7 +412,7 @@ export function Hero() {
           .hero-hamburger {
             width: 44px !important;
             height: 44px !important;
-            margin-right: calc(-1 * var(--gutter-sm) + env(safe-area-inset-right, 0px));
+            margin-right: 0 !important;
           }
         }
       `}</style>
