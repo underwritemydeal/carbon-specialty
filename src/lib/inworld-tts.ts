@@ -18,10 +18,20 @@
  *
  * Returns the decoded MP3 bytes so callers can stream them directly as
  * `Content-Type: audio/mpeg`.
+ *
+ * Model ID note (hot-fix 2026-05-17 after C.S.1.6.2 prod deploy):
+ * Inworld's actual model IDs use a literal "." in the 1.5-series
+ * names — "inworld-tts-1.5-mini", "inworld-tts-1.5-max". Several
+ * third-party docs (and several LLM training corpora) list the
+ * hyphenated form "inworld-tts-1-5-mini"; that form returns
+ *   { code: 3, message: "model_id: ... is not supported." }
+ * from the real API with HTTP 400, surfacing as INWORLD_UPSTREAM /
+ * 502 to the caller. If you change MODEL_ID, probe the endpoint
+ * with a 4-character text before shipping.
  */
 
 export const INWORLD_TTS_ENDPOINT = "https://api.inworld.ai/tts/v1/voice";
-export const INWORLD_MODEL_ID = "inworld-tts-1-5-mini";
+export const INWORLD_MODEL_ID = "inworld-tts-1.5-mini";
 export const INWORLD_DEFAULT_VOICE = "Reed";
 
 /** Hard ceiling on per-request input length. Carbon replies are short
