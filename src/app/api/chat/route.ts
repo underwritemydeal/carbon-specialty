@@ -218,16 +218,34 @@ async function runIntake(
       is_error?: boolean;
     }> = [];
 
+    // C.S.1.7.0g — capture the user's most recent message so each tool
+    // result log entry has the prompt that triggered it. Used for
+    // post-mortems on hallucination reports (the brief calls this out:
+    // "what enrich_property actually returned in those failing cases").
+    const latestUserInput = findLatestUserText(messages);
+
     for (const use of toolUses) {
       const input =
         use.input && typeof use.input === "object"
           ? (use.input as Record<string, unknown>)
           : {};
+      const t0 = Date.now();
       let result;
       try {
         result = await executeTool(use.name, input, origin);
       } catch (e) {
+        const elapsedMs = Date.now() - t0;
         console.error("[carbon-chat] TOOL_EXECUTION_FAIL", use.name, e);
+        logToolResult({
+          user_input: latestUserInput,
+          tool_name: use.name,
+          tool_input: input,
+          tool_output_content: null,
+          tool_output_data: null,
+          ok: false,
+          threw: e instanceof Error ? e.message : String(e),
+          elapsed_ms: elapsedMs,
+        });
         toolResults.push({
           type: "tool_result",
           tool_use_id: use.id,
@@ -236,8 +254,21 @@ async function runIntake(
         });
         continue;
       }
+      const elapsedMs = Date.now() - t0;
       toolsExecuted.push(use.name);
       if (result.data) lastPropertyFacts = result.data;
+      logToolResult({
+        user_input: latestUserInput,
+        tool_name: use.name,
+        tool_input: input,
+        tool_output_content: result.content,
+        tool_output_data: result.data
+          ? (result.data as unknown as Record<string, unknown>)
+          : null,
+        ok: result.ok,
+        threw: null,
+        elapsed_ms: elapsedMs,
+      });
       toolResults.push({
         type: "tool_result",
         tool_use_id: use.id,
@@ -285,6 +316,88 @@ function collectText(blocks: Anthropic.ContentBlock[]): string {
     .map((b) => b.text)
     .join("")
     .trim();
+}
+
+/* =========================================================================
+ * Structured tool-result logging — C.S.1.7.0g
+ *
+ * Emitted once per tool execution (success or thrown). The hallucination
+ * brief calls these entries out as the post-mortem data for failing
+ * cases — when a user reports "the chat described a property in Kansas
+ * City when I typed an SF address," we need to see what the tool actually
+ * returned so we can tell whether the LLM invented facts or the upstream
+ * returned junk. Single JSON line, one prefix, easy grep:
+ *
+ *   vercel logs --since 1h | grep '\[carbon-chat:tool-result\]'
+ *
+ * Long string fields are truncated to 500 chars to keep Vercel runtime
+ * logs scannable. The structured object is logged AFTER the prefix so
+ * grep + jq can pipe cleanly.
+ * ========================================================================= */
+
+const LOG_TRUNCATE_CHARS = 500;
+
+interface ToolResultLogEntry {
+  user_input: string | null;
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+  tool_output_content: string | null;
+  tool_output_data: Record<string, unknown> | null;
+  ok: boolean;
+  threw: string | null;
+  elapsed_ms: number;
+}
+
+export function logToolResult(entry: ToolResultLogEntry): void {
+  const sources_succeeded =
+    entry.tool_output_data &&
+    Array.isArray((entry.tool_output_data as { sources_succeeded?: unknown }).sources_succeeded)
+      ? ((entry.tool_output_data as { sources_succeeded?: string[] }).sources_succeeded ?? [])
+      : [];
+  const sources_failed =
+    entry.tool_output_data &&
+    Array.isArray((entry.tool_output_data as { sources_failed?: unknown }).sources_failed)
+      ? ((entry.tool_output_data as { sources_failed?: string[] }).sources_failed ?? [])
+      : [];
+
+  const payload = {
+    user_input: truncateString(entry.user_input, LOG_TRUNCATE_CHARS),
+    tool_name: entry.tool_name,
+    tool_input: entry.tool_input,
+    tool_output_content: truncateString(entry.tool_output_content, LOG_TRUNCATE_CHARS),
+    tool_output_data: entry.tool_output_data,
+    sources_succeeded,
+    sources_failed,
+    ok: entry.ok,
+    threw: entry.threw,
+    elapsed_ms: entry.elapsed_ms,
+  };
+
+  // Structured single-line emit. JSON.stringify can throw on circular
+  // refs; guard so a malformed tool response can never crash the route.
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(payload);
+  } catch (e) {
+    serialized = JSON.stringify({
+      tool_name: entry.tool_name,
+      log_serialize_error: e instanceof Error ? e.message : String(e),
+    });
+  }
+  console.log(`[carbon-chat:tool-result] ${serialized}`);
+}
+
+function truncateString(s: string | null, cap: number): string | null {
+  if (s == null) return null;
+  if (s.length <= cap) return s;
+  return `${s.slice(0, cap)}…[truncated ${s.length - cap}]`;
+}
+
+function findLatestUserText(messages: ChatMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") return messages[i].content;
+  }
+  return null;
 }
 
 function envelopeError(
