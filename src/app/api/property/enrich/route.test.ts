@@ -214,6 +214,204 @@ describe("enrichAddress", () => {
     expect(facts.sources_failed).toEqual([]);
   });
 
+  // ---- C.S.1.7.0a — CA county-direct routing -----------------------------
+
+  it("CA + LA County → fetchCACounty hit, Realie skipped (C.S.1.7.0a)", async () => {
+    // Mock LA ArcGIS returning a full record. Realie should NOT be called.
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("maps.googleapis.com/maps/api/geocode")) {
+        return Promise.resolve(geocodingOk()); // Long Beach CA, Los Angeles County
+      }
+      if (url.includes("services3.arcgis.com") && url.includes("LA_County_Parcels")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              features: [
+                {
+                  attributes: {
+                    APN: "7273-004-008",
+                    SitusFullAddress: "125 W 12TH ST LONG BEACH CA 90813",
+                    UseCode: "0500",
+                    UseDescription: "Five or more apartments",
+                    YearBuilt1: "1953",
+                    Units1: 10,
+                    SQFTmain1: 7564,
+                    Roll_LandValue: 83785,
+                    Roll_ImpValue: 351349,
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const facts = await enrichAddress("1247 Pine Ave Long Beach");
+
+    // Confirm LA County succeeded; Realie was NOT called
+    expect(facts.sources_succeeded).toContain("la-county");
+    expect(facts.sources_succeeded).toContain("geocoding");
+    expect(facts.sources_succeeded).toContain("streetview");
+    expect(facts.sources_failed).toContain("realie"); // skipped because county-direct hit
+    expect(facts.parcel_id).toBe("7273-004-008");
+    expect(facts.land_use_desc).toBe("Five or more apartments");
+    expect(facts.year_built).toBe(1953);
+    expect(facts.units).toBe(10);
+    expect(facts.building?.use_code).toBe("0500");
+    expect(facts.transaction?.assessed_value).toBe(83785 + 351349);
+
+    // Verify Realie was NEVER called
+    const realieCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("app.realie.ai");
+    });
+    expect(realieCalls).toHaveLength(0);
+  });
+
+  it("CA + LA County but ArcGIS returns empty → falls through to Realie (C.S.1.7.0a)", async () => {
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("maps.googleapis.com/maps/api/geocode")) {
+        return Promise.resolve(geocodingOk()); // LA County
+      }
+      if (url.includes("services3.arcgis.com") && url.includes("LA_County_Parcels")) {
+        // Empty features — no parcel near the geocoded point
+        return Promise.resolve(
+          new Response(JSON.stringify({ features: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      if (url.includes("app.realie.ai/api/public/property/address")) {
+        return Promise.resolve(
+          realieOk({ yearBuilt: 1985, buildingArea: 5400, useCode: "1104" }),
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const facts = await enrichAddress("Mystery St, Long Beach CA");
+
+    // la-county was tried + missed (no push to succeeded); Realie did the work
+    expect(facts.sources_succeeded).not.toContain("la-county");
+    expect(facts.sources_succeeded).toContain("realie");
+    expect(facts.year_built).toBe(1985);
+    expect(facts.land_use_code).toBe("1104");
+  });
+
+  it("non-CA address (Phoenix AZ) → bypasses fetchCACounty entirely, Realie direct (C.S.1.7.0a)", async () => {
+    const phoenixGeocoding = new Response(
+      JSON.stringify({
+        status: "OK",
+        results: [
+          {
+            formatted_address: "1418 E Edgemont Ave, Phoenix, AZ 85014, USA",
+            geometry: { location: { lat: 33.4794849, lng: -112.0511791 } },
+            address_components: [
+              { long_name: "1418", short_name: "1418", types: ["street_number"] },
+              { long_name: "East Edgemont Avenue", short_name: "E Edgemont Ave", types: ["route"] },
+              { long_name: "Phoenix", short_name: "Phoenix", types: ["locality", "political"] },
+              { long_name: "Maricopa County", short_name: "Maricopa County", types: ["administrative_area_level_2", "political"] },
+              { long_name: "Arizona", short_name: "AZ", types: ["administrative_area_level_1", "political"] },
+              { long_name: "United States", short_name: "US", types: ["country", "political"] },
+              { long_name: "85014", short_name: "85014", types: ["postal_code"] },
+            ],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("maps.googleapis.com/maps/api/geocode")) return Promise.resolve(phoenixGeocoding);
+      if (url.includes("app.realie.ai/api/public/property/address")) {
+        return Promise.resolve(
+          realieOk({ yearBuilt: 1947, buildingArea: 1450, useCode: "1001" }),
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const facts = await enrichAddress("1418 E Edgemont Ave Phoenix AZ");
+
+    // ArcGIS was NEVER called (non-CA bypass)
+    const arcgisCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("services3.arcgis.com") || u.includes("FeatureServer");
+    });
+    expect(arcgisCalls).toHaveLength(0);
+
+    // Realie did the enrichment
+    expect(facts.sources_succeeded).toContain("realie");
+    expect(facts.sources_succeeded).not.toContain("la-county");
+    expect(facts.land_use_desc).toBe("Single Family Residential");
+  });
+
+  it("CA + SF (not in registry) → bypasses fetchCACounty, falls through to Realie (C.S.1.7.0a)", async () => {
+    const sfGeocoding = new Response(
+      JSON.stringify({
+        status: "OK",
+        results: [
+          {
+            formatted_address: "1 Market St, San Francisco, CA 94105, USA",
+            geometry: { location: { lat: 37.7937, lng: -122.3954 } },
+            address_components: [
+              { long_name: "1", short_name: "1", types: ["street_number"] },
+              { long_name: "Market Street", short_name: "Market St", types: ["route"] },
+              { long_name: "San Francisco", short_name: "SF", types: ["locality", "political"] },
+              { long_name: "San Francisco County", short_name: "San Francisco County", types: ["administrative_area_level_2", "political"] },
+              { long_name: "California", short_name: "CA", types: ["administrative_area_level_1", "political"] },
+              { long_name: "United States", short_name: "US", types: ["country", "political"] },
+              { long_name: "94105", short_name: "94105", types: ["postal_code"] },
+            ],
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("maps.googleapis.com/maps/api/geocode")) return Promise.resolve(sfGeocoding);
+      if (url.includes("app.realie.ai/api/public/property/address")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const facts = await enrichAddress("1 Market St, San Francisco CA");
+
+    // ArcGIS NOT called (SF not in registry)
+    const arcgisCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("services3.arcgis.com");
+    });
+    expect(arcgisCalls).toHaveLength(0);
+    // Realie WAS called (and got empty)
+    const realieCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("app.realie.ai");
+    });
+    expect(realieCalls).toHaveLength(1);
+    expect(facts.sources_failed).toContain("realie");
+    expect(facts.sources_succeeded).not.toContain("la-county");
+  });
+
   it("graceful-degrades when env vars are missing — no upstream calls, all sources_failed", async () => {
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.REALIE_API_TOKEN;

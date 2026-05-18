@@ -50,16 +50,28 @@ For ongoing cost planning. Verify against https://docs.claude.com before making 
 
 ## Property data API landscape
 
+Current pipeline (sprint C.S.1.7.0a):
+
+```
+geocoding (Google) → if CA + county in registry → county-direct ArcGIS
+                  → else / on null              → Realie Address Lookup
+                  → (streetview always)
+```
+
 | Provider | Coverage | Pricing | Carbon's verdict |
 |---|---|---|---|
-| **Regrid** | Nationwide US parcels | Free Starter tier (25 calls/day), self-serve paid tiers above | **Selected for Phase 1.** Quality varies by state; coverage strongest for residential parcels. |
-| **Google Geocoding API** | Worldwide addresses + lat/lng | $5 per 1k geocodes after free tier | **Selected** — primary geocoder. |
+| **CA county-direct (ArcGIS REST)** | Per-county. LA County wired in C.S.1.7.0a. Pattern is a generic `arcgis-client.ts` + per-county field registry (`ca-county-registry.ts`); subsequent sprints add Orange, San Diego, Riverside, etc. | Free (public-records data) | **Selected for CA Phase 1.** Direct integration avoids the third-party-aggregator coverage gaps that bit Carbon on Regrid (C.S.1.6.6/7) and Realie (C.S.1.6.8). Surfaces richer building specs (LA publishes up to 5 sub-buildings per parcel, bedrooms/bathrooms, design + quality class, parcel-polygon-derived lot area). |
+| **Realie.ai** | Nationwide US property data | Free tier 25 req/month + $0.15/overage | **Selected as the non-CA + CA-fallback path** (C.S.1.6.8). Address Lookup endpoint. Returns thin shape for most CA addresses, which is why CA routes to county-direct first. |
+| **Google Geocoding API** | Worldwide addresses + lat/lng + structured address components | $5 per 1k geocodes after free tier | **Selected** — primary geocoder. The structured `address_components` parsing (street_number, route, locality, county, state) is what enables both Realie's required-field URL shape and the county-direct routing in C.S.1.7.0a. |
 | **Google Places API** | Address autocomplete, POI data | Free tier generous | **Selected** for chat input autocomplete. |
 | **Google Street View Static** | Address-to-image URL composer | Free tier | **Selected** for visual confirmation in chat responses. |
-| Realie.ai | US parcels | Free tier + cheaper paid tiers than Regrid | **Backup option** if Regrid friction emerges. Same data shape, would be a single-file swap in `/api/property/enrich`. |
-| ATTOM / CoreLogic / DataTree | Enterprise property data | Enterprise contracts only | **Deferred.** Not justified pre-revenue. |
+| ~~Regrid~~ | Nationwide US parcels | Regrid Self-Serve starts ~$500/month | **Replaced by Realie in C.S.1.6.8.** Self-serve tier didn't fit Carbon's ~25–200 quotes/month early-stage volume. Code path deleted; Realie's response shape covers the same PropertyFacts fields. |
+| ATTOM / CoreLogic / DataTree / FirstAmerican / LightBox | Nationwide property data **including owner name + mailing address** | Enterprise contracts | **Deferred but on the roadmap.** Required for the marketing-export use case Carbon eventually needs — CA counties (LA confirmed) do NOT publish owner name or mailing address via public ArcGIS by policy. The C.S.1.7.0a registry shape already models `owner` fields (mostly `undefined` for CA) so a future sprint can wire one of these sources in without reshaping `PropertyFacts`. |
+| PropertyShark | US property + owner + skip-trace | Per-record pricing | Same category as ATTOM/CoreLogic — candidate for owner-data sprint. |
 | First Street | Climate risk per property | Contact-for-pricing | **Deferred to Phase 3.** |
 | Cape Analytics | COPE data + apartment Property Mapper | Enterprise contracts only | **Deferred to Phase 3** — upgrade target once placement volume justifies. |
+
+**Owner-data gap (important):** CA counties' public ArcGIS endpoints don't publish owner name or mailing address. LA County confirmed via direct probe (87 fields surfaced; zero owner fields). This is a privacy-driven policy choice — owner data is only accessible via the assessor's per-parcel captcha-protected portal. Carbon's chat enrichment doesn't need it (chat uses building specs to lead the asset-type confirmation); the marketing-export use case requires a separate source (see ATTOM/PropertyShark/LightBox row).
 
 ## Per-conversation cost model (Carbon's chat as of C.S.1.6)
 
