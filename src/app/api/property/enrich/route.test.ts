@@ -187,12 +187,15 @@ describe("enrichAddress", () => {
     expect(realieCall).toBeDefined();
     const realieUrl = typeof realieCall![0] === "string" ? realieCall![0] : (realieCall![0] as URL).toString();
 
-    // URL has the expected structured params from the geocoding mock
-    // (state=CA, address="1247 Pine Ave", city=Long Beach, county=...)
+    // URL has state + address from the geocoding mock (state=CA,
+    // address="1247 Pine Ave"). C.S.1.6.8 hot-fix #2 — city/county
+    // are intentionally NOT sent; prod probes showed Realie returns
+    // 404 when those fields are populated even though state+address
+    // alone match real parcels in the same jurisdiction.
     expect(realieUrl).toContain("state=CA");
     expect(realieUrl).toContain("address=1247+Pine+Ave"); // URLSearchParams encodes space as +
-    expect(realieUrl).toContain("city=Long+Beach");
-    expect(realieUrl).toContain("county=Los+Angeles+County");
+    expect(realieUrl).not.toContain("city=");
+    expect(realieUrl).not.toContain("county=");
 
     // Auth header = raw token, NO "Bearer " prefix
     const init = realieCall![1] as RequestInit | undefined;

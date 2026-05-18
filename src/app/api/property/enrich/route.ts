@@ -310,12 +310,17 @@ export async function fetchRealie(
     state,
     address: street_line,
   });
-  // `city` is only accepted alongside `county` per Realie's spec.
-  // Send both or neither.
-  if (optional.city && optional.county) {
-    params.set("city", optional.city);
-    params.set("county", optional.county);
-  }
+  // C.S.1.6.8 hot-fix #2 — DO NOT send city/county. Realie's docs say
+  // those params are optional, but prod probes with all four fields
+  // populated (state + address + city + county) returned 404 for three
+  // real US addresses across three states, while Realie's docs example
+  // uses just state + address. Sending city/county appears to over-
+  // constrain the match — Realie's address matcher likely does
+  // jurisdiction-specific normalization that we can't replicate from
+  // Google's address_components (e.g. "Maricopa County" vs "Maricopa",
+  // "Brooklyn" vs "Kings County borough name vs city"). Drop those
+  // params and let Realie match on just state + street line 1.
+  void optional;
   const url = `https://app.realie.ai/api/public/property/address/?${params.toString()}`;
   try {
     const res = await fetch(url, {
