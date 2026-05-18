@@ -22,6 +22,83 @@ significant marketing copy or stats changes. Preview deploys
 (`vercel` without `--prod`, or `vercel --preview`) do not require this
 confirmation step.
 
+## Chat architecture (post-C.S.1.6)
+
+**Carbon Specialty chat bypasses the Covr Worker entirely.** All chat
+completions now run through Next.js API routes on the same Vercel
+deployment, calling the Anthropic Messages API directly with the
+official `@anthropic-ai/sdk`. Worker integration becomes a future
+migration once the Covr Worker repo is surfaced for proper tool-use
+support.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/chat` | The single chat endpoint. Accepts `{ messages, mode? }` where `mode: "intake" \| "extract"` (default `"intake"`). |
+| `POST /api/property/enrich` | Looks up canonical address + parcel facts + Street View URL for a property. Called by the chat's `enrich_property` tool. |
+| `POST /api/lead-fallback` | Resend-based lead persistence. Unchanged from C.S.1.4. |
+
+### Intake call
+
+`POST /api/chat` with `mode: "intake"`:
+
+- Model: `claude-haiku-4-5-20251001` (Haiku is the right tier for intake; Sonnet is reserved for the underwriter-side tools we haven't built yet).
+- System prompt: `CARBON_INTAKE_SYSTEM_PROMPT` from `src/lib/carbon-system-prompt.ts`, sent as a single block with `cache_control: { type: "ephemeral" }` so it's cached across turns.
+- Tools registered: `enrich_property` (see `src/lib/chat-tools.ts`).
+- Server-side tool-use loop: when the model returns `stop_reason: "tool_use"`, the route executes every tool_use block, appends `tool_result` messages, and re-invokes Anthropic. Loop caps at 5 iterations (`LOOP_EXHAUSTED` error otherwise) to prevent runaway.
+- Returns `{ ok, text, tools_executed, property_facts? }`. `property_facts` surfaces the last enrich result so the client can render it natively in a future sprint.
+
+### Extract call
+
+`POST /api/chat` with `mode: "extract"`:
+
+- Same model, no tools, no prompt caching (extraction prompt is short and runs once per conversation).
+- System prompt: `CARBON_EXTRACTION_SYSTEM_PROMPT`.
+- Returns `{ ok, text }`. Client parses the text as JSON matching `CarbonIntakePayload`.
+
+### Tool: `enrich_property`
+
+- Single parameter: `address: string`.
+- Implementation: `executeTool` in `src/lib/chat-tools.ts` POSTs to `${origin}/api/property/enrich` (server-to-server HTTP hop on the same Vercel deployment — keeps the tool independently testable).
+- `/api/property/enrich` composes three upstreams: Google Geocoding API, Regrid Parcel API, and a synthetic Google Street View Static URL.
+- Both real upstream fetches use `next: { revalidate: 2592000 }` (30-day edge cache). No Upstash, no external KV.
+- Partial-failure semantics: response always includes `sources_succeeded` + `sources_failed`. 200 with whatever was retrieved when at least one source succeeded. 502 only when every source fails. 400 on missing/malformed address.
+
+### Error categories (logged with `[carbon-chat]` prefix)
+
+| Kind | Cause | Client action |
+| --- | --- | --- |
+| `BAD_REQUEST` | Missing `ANTHROPIC_API_KEY`, malformed body | `CarbonChat` falls through to contact-form mode |
+| `ANTHROPIC_AUTH` | 401/403 from Anthropic | Same |
+| `ANTHROPIC_RATE_LIMIT` | 429 | Same |
+| `ANTHROPIC_SERVER` | 5xx or network | `CarbonChat` retries once, then falls through |
+| `TOOL_EXECUTION_FAIL` | Tool dispatcher threw or returned `ok: false` | Same |
+| `LOOP_EXHAUSTED` | Hit `MAX_TOOL_ITERATIONS` without natural stop | Same |
+
+The discriminated error union surfaces back to the client as `ChatError` with kinds `auth | rate-limit | server | network | bad-shape | tool-fail`. The retry/fallthrough logic in `CarbonChat.tsx` is unchanged from C.S.1.4.
+
+### Env vars
+
+| Variable | Required | When missing |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Yes for chat | `/api/chat` returns 503 `BAD_REQUEST`. Chat falls to contact-form mode. |
+| `REGRID_API_TOKEN` | Yes for parcel lookup | `/api/property/enrich` returns 200 with `regrid` in `sources_failed`. Tool result instructs the model to ask the user directly. |
+| `GOOGLE_MAPS_API_KEY` | Yes for geocoding + street view | `/api/property/enrich` returns 200 with `geocoding` and `streetview` in `sources_failed`. Same fallback as above. |
+| `FALLBACK_EMAIL_TO` + `RESEND_API_KEY` | Yes for lead email | `/api/lead-fallback` returns 200 `logged-only`. Payload visible in Vercel runtime logs. |
+| `NEXT_PUBLIC_LEADS_ENDPOINT_READY` / `_ENDPOINT` | No (forward-compat) | Default false → submissions always go through `/api/lead-fallback`. |
+| `NEXT_PUBLIC_SITE_URL` / `_POSTHOG_*` | No | Defaults / analytics off. |
+
+Operator sets these in Vercel after merge. Routes ship in a graceful-degradation state until then — no 5xx on missing keys.
+
+### Migration note — Worker
+
+The Covr Worker CORS blocker (the C.A.1.5 deferral that previously prevented `*.vercel.app` preview origins from reaching `/v1/messages`) **no longer blocks Carbon Specialty chat.** Carbon doesn't talk to the Worker anymore.
+
+That CORS blocker still blocks the two Phase 4 verification specs in the `mycovrai` repo (the ones that run Playwright against `*.vercel.app` preview deployments). Those need the Worker allowlist fix independently.
+
+Future Worker integration for Carbon (when the Worker repo is surfaced and tool-use support is wired): swap `callChat` in `src/lib/carbon-intake.ts` to point back at the Worker. The system prompt + tool registry stay the same. The /api/chat route would become the Carbon-only fallback path.
+
 ## Chat behavior contract (sprint C.S.1.4)
 
 The hero chat — `src/components/CarbonChat.tsx` — is an active AI intake
