@@ -12,6 +12,7 @@ import {
   type CarbonContactPayload,
 } from "@/lib/carbon-intake";
 import { INTAKE_WRAPUP_SENTINEL } from "@/lib/carbon-system-prompt";
+import { loadGooglePlaces } from "@/lib/google-places-loader";
 import { track } from "@/lib/analytics";
 
 const INITIAL_GREETING = `Hi — I'm Carbon, the AI intake specialist at Carbon Specialty Insurance.
@@ -56,6 +57,17 @@ export function CarbonChat({
   const panelRef = useRef<HTMLElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // C.S.1.6.1 — Places Autocomplete on the first user message only.
+  // The widget binds to an <input>, not a <textarea>. We mount a hidden
+  // input absolutely positioned over the textarea so the .pac-container
+  // anchors to the right bounding box, and sync values bidirectionally.
+  // Once the first user message sends, we tear the whole thing down so
+  // subsequent intake turns (renewal date, contact info, etc.) don't
+  // attempt to autocomplete as addresses.
+  const placesInputRef = useRef<HTMLInputElement>(null);
+  const placesTeardownRef = useRef<(() => void) | null>(null);
+  const [autocompleteEnabled, setAutocompleteEnabled] = useState(true);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, thinking, mode]);
@@ -69,6 +81,70 @@ export function CarbonChat({
       previouslyFocused.current?.focus?.();
     }
   }, [open]);
+
+  // C.S.1.6.1 — Initialize Places Autocomplete when the chat opens
+  // (and only on the first user message). Resolves gracefully to no-op
+  // if the key isn't configured or the script fails to load.
+  useEffect(() => {
+    if (!open || !autocompleteEnabled || mode !== "chat") return;
+    let cancelled = false;
+    let cleanup: (() => void) | null = null;
+
+    loadGooglePlaces().then((places) => {
+      if (cancelled || !places) return;
+      const inputEl = placesInputRef.current;
+      const textareaEl = inputRef.current;
+      if (!inputEl || !textareaEl) return;
+
+      const ac = new places.Autocomplete(inputEl, {
+        types: ["address"],
+        componentRestrictions: { country: "us" },
+        fields: ["formatted_address", "place_id", "name"],
+      });
+
+      const handlePlace = () => {
+        const place = ac.getPlace();
+        const formatted = place?.formatted_address ?? "";
+        if (!formatted) return;
+        // Push into the textarea via setInput. No auto-submit.
+        setInput(formatted);
+        // Refocus the textarea so the user can press Enter to send.
+        requestAnimationFrame(() => {
+          textareaEl.focus();
+          textareaEl.setSelectionRange(formatted.length, formatted.length);
+        });
+        track("cs_chat_place_selected", { place_id: place?.place_id ?? "" });
+      };
+      const listener = ac.addListener("place_changed", handlePlace);
+
+      cleanup = () => {
+        listener.remove();
+        // Remove any .pac-container the widget added (Google appends
+        // them to <body> as siblings of the panel).
+        document.querySelectorAll(".pac-container").forEach((el) => el.remove());
+      };
+      placesTeardownRef.current = cleanup;
+    });
+
+    return () => {
+      cancelled = true;
+      if (cleanup) cleanup();
+      placesTeardownRef.current = null;
+    };
+  }, [open, autocompleteEnabled, mode]);
+
+  // Mirror textarea value → hidden input so the widget's search term
+  // updates as the user types. Programmatically setting .value doesn't
+  // trigger the widget; we dispatch an "input" event so it picks up.
+  useEffect(() => {
+    if (!autocompleteEnabled) return;
+    const inputEl = placesInputRef.current;
+    if (!inputEl) return;
+    if (inputEl.value !== input) {
+      inputEl.value = input;
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }, [input, autocompleteEnabled]);
 
   // ESC + Tab focus trap
   useEffect(() => {
@@ -107,6 +183,15 @@ export function CarbonChat({
       track("cs_chat_user_message", { length: text.length });
       setThinking(true);
       setPropertyLookup(looksLikeAddress(text));
+
+      // C.S.1.6.1 — autocomplete is intake-address-only. After the
+      // first user message, tear it down so renewal-date / contact
+      // turns don't get address-completion suggestions.
+      if (autocompleteEnabled) {
+        if (placesTeardownRef.current) placesTeardownRef.current();
+        placesTeardownRef.current = null;
+        setAutocompleteEnabled(false);
+      }
 
       // Retry the conversational turn ONCE on 5xx/network before falling
       // through to contact-form mode. Auth, bad-shape, and rate-limit
@@ -225,6 +310,8 @@ export function CarbonChat({
     setSubmitted(false);
     setMode("chat");
     referenceRef.current = generateReferenceId();
+    // Reset fully — including the first-message autocomplete.
+    setAutocompleteEnabled(true);
   };
 
   // -------------------------------------------------------------------------
@@ -447,30 +534,60 @@ export function CarbonChat({
               <label htmlFor="carbon-chat-input" className="sr-only">
                 Reply
               </label>
-              <textarea
-                id="carbon-chat-input"
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your reply…"
-                rows={1}
-                disabled={thinking}
-                style={{
-                  flex: 1,
-                  resize: "none",
-                  border: 0,
-                  outline: "none",
-                  background: "transparent",
-                  padding: "8px 0",
-                  fontFamily: "var(--font-body)",
-                  fontSize: 15,
-                  lineHeight: 1.4,
-                  color: "var(--ink)",
-                  minHeight: 24,
-                  maxHeight: 160,
-                }}
-              />
+              <div style={{ position: "relative", flex: 1 }}>
+                <textarea
+                  id="carbon-chat-input"
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    autocompleteEnabled
+                      ? "Type a building address — or your reply…"
+                      : "Type your reply…"
+                  }
+                  rows={1}
+                  disabled={thinking}
+                  style={{
+                    width: "100%",
+                    resize: "none",
+                    border: 0,
+                    outline: "none",
+                    background: "transparent",
+                    padding: "8px 0",
+                    fontFamily: "var(--font-body)",
+                    fontSize: 15,
+                    lineHeight: 1.4,
+                    color: "var(--ink)",
+                    minHeight: 24,
+                    maxHeight: 160,
+                  }}
+                />
+                {/* C.S.1.6.1 — Places Autocomplete attaches to <input>
+                    only. Hidden input sized to the textarea so the
+                    .pac-container anchors at the right bounding box. */}
+                {autocompleteEnabled && (
+                  <input
+                    ref={placesInputRef}
+                    type="text"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    name="carbon-places-shadow"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      opacity: 0,
+                      pointerEvents: "none",
+                      border: 0,
+                      padding: 0,
+                      margin: 0,
+                    }}
+                  />
+                )}
+              </div>
               <button
                 onClick={send}
                 disabled={!input.trim() || thinking}

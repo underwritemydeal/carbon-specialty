@@ -85,6 +85,7 @@ The discriminated error union surfaces back to the client as `ChatError` with ki
 | `ANTHROPIC_API_KEY` | Yes for chat | `/api/chat` returns 503 `BAD_REQUEST`. Chat falls to contact-form mode. |
 | `REGRID_API_TOKEN` | Yes for parcel lookup | `/api/property/enrich` returns 200 with `regrid` in `sources_failed`. Tool result instructs the model to ask the user directly. |
 | `GOOGLE_MAPS_API_KEY` | Yes for geocoding + street view | `/api/property/enrich` returns 200 with `geocoding` and `streetview` in `sources_failed`. Same fallback as above. |
+| `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` | Yes for first-message Places Autocomplete (C.S.1.6.1) | CarbonChat skips autocomplete wiring; the textarea still works for free-text input. |
 | `FALLBACK_EMAIL_TO` + `RESEND_API_KEY` | Yes for lead email | `/api/lead-fallback` returns 200 `logged-only`. Payload visible in Vercel runtime logs. |
 | `NEXT_PUBLIC_LEADS_ENDPOINT_READY` / `_ENDPOINT` | No (forward-compat) | Default false → submissions always go through `/api/lead-fallback`. |
 | `NEXT_PUBLIC_SITE_URL` / `_POSTHOG_*` | No | Defaults / analytics off. |

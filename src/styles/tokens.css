@@ -406,6 +406,79 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+/* =========================================================================
+   Google Places Autocomplete — .pac-container overrides (sprint C.S.1.6.1)
+   ----------------------------------------------------------------------
+   Google appends the suggestions dropdown (.pac-container) to <body>,
+   so it sits outside the component tree. These overrides re-skin the
+   widget to Carbon's editorial discipline:
+     · paper bg, ink text, hairline ink border, no radius, no shadow
+     · IBM Plex Sans for suggestion text, IBM Plex Mono for the matched
+       substring so the typed query reads as a precise marker
+     · pine-tint hover, pine-deep selection, no blue
+   ========================================================================= */
+.pac-container {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
+  margin-top: 4px;
+  padding: 0;
+  /* Google adds inline width — we keep that so the dropdown matches the
+     anchor input's width. Just clean up the default cruft. */
+}
+.pac-container::after {
+  /* Google attribution row — keep, but tone it down to match the brand. */
+  background-position: right 8px center;
+  background-size: 96px 12px;
+  height: 16px;
+  opacity: 0.5;
+  margin: 4px 0 0;
+}
+.pac-item {
+  padding: 10px 14px;
+  border-top: 1px solid var(--concrete);
+  cursor: pointer;
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.pac-item:first-child { border-top: 0; }
+.pac-item:hover {
+  background: var(--ember-tint);
+  color: var(--ember-ink);
+}
+.pac-item-selected,
+.pac-item-selected:hover {
+  background: var(--ember);
+  color: var(--paper);
+}
+.pac-item-query {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
+  padding-right: 4px;
+}
+.pac-item-selected .pac-item-query { color: var(--paper); }
+.pac-matched {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ember);
+  letter-spacing: 0;
+}
+.pac-item-selected .pac-matched { color: var(--paper); }
+.pac-icon {
+  /* Hide the marker pin icon — Carbon doesn't use the default Google
+     iconography. The text alone reads as a place suggestion in context. */
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
