@@ -106,7 +106,9 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
     typeof geo?.lng === "number" &&
     geo?.county
   ) {
-    const countyFacts = await fetchCACounty(geo.lat, geo.lng, geo.county);
+    const countyFacts = await fetchCACounty(geo.lat, geo.lng, geo.county, {
+      streetNumber: geo.street_number,
+    });
     if (countyFacts) {
       Object.assign(facts, countyFacts);
       // C.S.1.7.0b — source tag comes from the registry's slug per
@@ -174,6 +176,11 @@ type GeocodingResult = {
    *  Address Lookup, which takes `state` + `address` (street line 1)
    *  as separate query params, not a single concatenated string. */
   street_line?: string;
+  /** C.S.1.7.0i — street number alone (e.g. "1266"). Used by
+   *  fetchCACounty to disambiguate when the geometry query returns
+   *  multiple parcels: prefer the one whose published address field
+   *  contains this street number as a discrete token. */
+  street_number?: string;
   city?: string;
   state?: string;
   county?: string;
@@ -229,6 +236,7 @@ export async function fetchGeocoding(
       lat: loc.lat,
       lng: loc.lng,
       street_line,
+      street_number: streetNumber || undefined,
       city: findComponent("locality") ?? findComponent("sublocality"),
       state: findComponent("administrative_area_level_1", "short_name"),
       county: findComponent("administrative_area_level_2"),

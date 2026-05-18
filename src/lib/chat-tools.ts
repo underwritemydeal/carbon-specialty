@@ -101,49 +101,7 @@ async function executeEnrichProperty(
       return { ok: false, content: `Enrichment error: ${data.error}` };
     }
 
-    // Compose a compact human-readable string the model can quote.
-    // C.S.1.6.6 — land_use_desc is the lead fact for asset-type
-    // inference; surface it near the top of the block so the model
-    // sees it before the secondary parcel facts.
-    // C.S.1.7.0b insurance tuning — lot size line removed; effective
-    // year + stories + sprinklered + roof lines added when present.
-    // Order optimized for underwriter eye: land use → year(s) → size
-    // → construction quality → SFR detail → owner / id.
-    const lines: string[] = [];
-    lines.push(`Address (canonical): ${data.canonical_address ?? data.query_address}`);
-    if (data.land_use_desc) {
-      lines.push(`Land use: ${data.land_use_desc}${data.land_use_code ? ` (code ${data.land_use_code})` : ""}`);
-    } else if (data.land_use_code) {
-      lines.push(`Land use code: ${data.land_use_code}`);
-    }
-    if (typeof data.units === "number") lines.push(`Units: ${data.units}`);
-    if (typeof data.year_built === "number") lines.push(`Year built: ${data.year_built}`);
-    if (typeof data.building?.effective_year_built === "number") {
-      lines.push(`Effective year built (post-rehab): ${data.building.effective_year_built}`);
-    }
-    if (typeof data.square_feet === "number") lines.push(`Square feet: ${data.square_feet}`);
-    if (data.construction_type) {
-      lines.push(`Construction: ${data.construction_type}`);
-    } else if (data.building?.constructionTypeFlag === "unreliable_county_data") {
-      // C.S.1.7.0e sanity-check fired — the county code didn't match
-      // the building's height (e.g. 13-story wood frame). Tell the
-      // model to ask the user directly instead of guessing.
-      lines.push(
-        `Construction: county records flagged unreliable for this building's height — ask the user for the actual construction type (wood frame, steel frame, reinforced concrete, masonry, etc.).`,
-      );
-    }
-    if (typeof data.building?.stories === "number") lines.push(`Stories: ${data.building.stories}`);
-    if (typeof data.building?.sprinklered === "boolean") {
-      lines.push(`Sprinklered: ${data.building.sprinklered ? "yes" : "no"}`);
-    }
-    if (data.building?.roof_type) lines.push(`Roof type: ${data.building.roof_type}`);
-    if (typeof data.building?.bedrooms === "number") lines.push(`Bedrooms: ${data.building.bedrooms}`);
-    if (typeof data.building?.bathrooms === "number") lines.push(`Bathrooms: ${data.building.bathrooms}`);
-    if (data.owner_of_record) lines.push(`Owner of record: ${data.owner_of_record}`);
-    if (data.parcel_id) lines.push(`Parcel ID: ${data.parcel_id}`);
-    if (data.sources_failed.length > 0) {
-      lines.push(`Sources that did not return data: ${data.sources_failed.join(", ")}.`);
-    }
+    const lines = composeEnrichmentLines(data);
     if (lines.length === 1) {
       lines.push(
         "No public records returned facts for this address. Ask the user for the missing details (units, year built, square footage, current carrier).",
@@ -161,4 +119,81 @@ async function executeEnrichProperty(
       content: `Network error reaching enrichment service: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
+}
+
+/* =========================================================================
+ * Enrichment-line composer — extracted in C.S.1.7.0i for unit testing.
+ *
+ * Turns a PropertyFacts object into the compact line-by-line block the
+ * model reads back as the tool's `content`. Order is optimized for the
+ * underwriter eye (land use leads, then year/size/construction, then
+ * SFR detail, then owner/id). Empty fields are omitted (Realie + CA
+ * counties both return sparse records depending on what the source
+ * actually publishes).
+ *
+ * History:
+ *   C.S.1.6.6 — land_use_desc moved to the top so the asset-type
+ *               inference rule has signal before secondary facts.
+ *   C.S.1.7.0b — lot size dropped (insurance-tuning DROP list).
+ *   C.S.1.7.0e — construction sanity-check flag handling added.
+ *   C.S.1.7.0i — condo-unit disambiguation hint added (canonical
+ *                case: Realie returns one condo unit's record for a
+ *                multi-unit building; chat asks user to confirm).
+ * ========================================================================= */
+
+export function composeEnrichmentLines(data: PropertyFacts): string[] {
+  const lines: string[] = [];
+  lines.push(`Address (canonical): ${data.canonical_address ?? data.query_address}`);
+  if (data.land_use_desc) {
+    lines.push(`Land use: ${data.land_use_desc}${data.land_use_code ? ` (code ${data.land_use_code})` : ""}`);
+  } else if (data.land_use_code) {
+    lines.push(`Land use code: ${data.land_use_code}`);
+  }
+  if (typeof data.units === "number") lines.push(`Units: ${data.units}`);
+  if (typeof data.year_built === "number") lines.push(`Year built: ${data.year_built}`);
+  if (typeof data.building?.effective_year_built === "number") {
+    lines.push(`Effective year built (post-rehab): ${data.building.effective_year_built}`);
+  }
+  if (typeof data.square_feet === "number") lines.push(`Square feet: ${data.square_feet}`);
+  if (data.construction_type) {
+    lines.push(`Construction: ${data.construction_type}`);
+  } else if (data.building?.constructionTypeFlag === "unreliable_county_data") {
+    // C.S.1.7.0e sanity-check fired — the county code didn't match
+    // the building's height (e.g. 13-story wood frame). Tell the
+    // model to ask the user directly instead of guessing.
+    lines.push(
+      `Construction: county records flagged unreliable for this building's height — ask the user for the actual construction type (wood frame, steel frame, reinforced concrete, masonry, etc.).`,
+    );
+  }
+  if (typeof data.building?.stories === "number") lines.push(`Stories: ${data.building.stories}`);
+  if (typeof data.building?.sprinklered === "boolean") {
+    lines.push(`Sprinklered: ${data.building.sprinklered ? "yes" : "no"}`);
+  }
+  if (data.building?.roof_type) lines.push(`Roof type: ${data.building.roof_type}`);
+  if (typeof data.building?.bedrooms === "number") lines.push(`Bedrooms: ${data.building.bedrooms}`);
+  if (typeof data.building?.bathrooms === "number") lines.push(`Bathrooms: ${data.building.bathrooms}`);
+  if (data.owner_of_record) lines.push(`Owner of record: ${data.owner_of_record}`);
+  if (data.parcel_id) lines.push(`Parcel ID: ${data.parcel_id}`);
+
+  // C.S.1.7.0i — condo-unit disambiguation. Realie (the non-CA
+  // fallback) keys its property records at the condo-unit level —
+  // a 6-unit apartment building that's been legally subdivided into
+  // 6 condo parcels returns ONE unit's record (single sqft, single
+  // br/ba, "Condominium Unit" use code) per lookup. Surfacing those
+  // as "the property" is misleading: the user may be insuring the
+  // whole multi-unit building, not the single unit. Production
+  // report: 2708 Holmes St KC returned 1158 sqft 2br/2ba condo
+  // when the actual building is 6 units. Hint tells the chat to
+  // ask the user which they're insuring.
+  const useDesc = (data.land_use_desc ?? "").toLowerCase();
+  if (useDesc.includes("condominium") || useDesc.includes("condo unit")) {
+    lines.push(
+      `Note: county/aggregator records show this parcel as a single condominium unit. If the user is insuring the whole multi-unit building (not just this one condo unit), the unit count and square footage above describe ONE unit only, not the whole building. Ask the user: "Records show this parcel as a single condo unit — are you insuring this one unit, or the whole multi-unit building it's part of?"`,
+    );
+  }
+
+  if (data.sources_failed.length > 0) {
+    lines.push(`Sources that did not return data: ${data.sources_failed.join(", ")}.`);
+  }
+  return lines;
 }
