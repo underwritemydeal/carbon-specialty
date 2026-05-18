@@ -88,12 +88,19 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
   }
 
   // ---- Regrid -------------------------------------------------------------
+  // C.S.1.6.7 — Switched from address-based lookup
+  // (`/api/v2/parcels/address?query=...`) to lat-lon point lookup
+  // (`/api/v2/parcels/point?lat=...&lon=...`). The address endpoint
+  // was returning 200 OK with empty features for every prod address
+  // tested in C.S.1.6.6 (diagnosed via REGRID_EMPTY logging). Regrid
+  // documents the point endpoint as the more reliable path when an
+  // upstream geocoder is available — which Carbon has via Google
+  // Geocoding earlier in this composer. We only attempt Regrid when
+  // geocoding succeeded; otherwise mark regrid as failed since we
+  // have no point to look up.
   const regridToken = process.env.REGRID_API_TOKEN;
-  if (regridToken) {
-    // Prefer the canonical address from Geocoding when we have it — Regrid
-    // matches better against fully-qualified addresses.
-    const lookup = facts.canonical_address ?? address;
-    const regrid = await fetchRegrid(lookup, regridToken);
+  if (regridToken && typeof facts.lat === "number" && typeof facts.lng === "number") {
+    const regrid = await fetchRegrid(facts.lat, facts.lng, regridToken);
     if (regrid) {
       Object.assign(facts, regrid);
       succeeded.push("regrid");
@@ -188,20 +195,41 @@ interface RegridResponse {
 
 const ACRES_TO_SQFT = 43560;
 
+/** Default search radius (meters) around the geocoded point. 50m
+ *  comfortably covers a building footprint without picking up
+ *  neighboring parcels on a typical urban lot, and avoids the
+ *  default-0 case in Regrid where lat-lon has to fall exactly on a
+ *  parcel boundary to match. */
+export const REGRID_DEFAULT_RADIUS_M = 50;
+
+/**
+ * Regrid Parcel API — lat/lon point lookup.
+ *
+ *   GET https://app.regrid.com/api/v2/parcels/point
+ *     ?lat=<lat>&lon=<lon>&radius=<meters>&limit=1&token=<token>
+ *
+ * Switched from the address-based endpoint in C.S.1.6.7. The address
+ * endpoint (`/api/v2/parcels/address?query=...`) was returning 200 OK
+ * with empty features for every prod address tested — diagnosed via
+ * the REGRID_EMPTY logging added in PR #18. Regrid documents the
+ * point endpoint as the more reliable path when an upstream
+ * geocoder is available; Carbon has lat/lng from Google Geocoding
+ * earlier in this composer, so we thread it through here.
+ *
+ * Response shape is identical to the address endpoint
+ * (`{ parcels: { features: [...] } }`), so the normalizer and the
+ * RegridResponse type stay unchanged.
+ *
+ * Diagnostic logging from PR #18 is preserved at all three failure
+ * branches. The token is REDACTED from logged URLs.
+ */
 export async function fetchRegrid(
-  address: string,
+  lat: number,
+  lon: number,
   token: string,
+  radiusMeters: number = REGRID_DEFAULT_RADIUS_M,
 ): Promise<RegridFacts | null> {
-  // Regrid Parcel API — address lookup. Returns a parcel collection;
-  // we take the top match.
-  const url = `https://app.regrid.com/api/v2/parcels/address?query=${encodeURIComponent(address)}&limit=1&token=${token}`;
-  // C.S.1.6.6 hot-fix — Regrid was silently 0-data on every prod
-  // address tested in the C.S.1.6.6 deploy. fetchRegrid swallowed
-  // every failure mode (non-OK status, empty-parcel response,
-  // network/JSON throw) as null, leaving no signal in Vercel logs.
-  // Diagnostic logging here surfaces the actual upstream behavior.
-  // The token is REDACTED from logged URLs (the only secret in the
-  // query string). Address is fine to log — it's user-typed.
+  const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lon}&radius=${radiusMeters}&limit=1&token=${token}`;
   const redactedUrl = url.replace(token, "REDACTED");
   try {
     const res = await fetch(url, { next: { revalidate: 2592000 } });
@@ -222,14 +250,14 @@ export async function fetchRegrid(
     if (!fields) {
       const featuresLen = data.parcels?.features?.length ?? 0;
       console.warn(
-        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} address=${address.slice(0, 80)}`,
+        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} lat=${lat} lon=${lon} radius=${radiusMeters}`,
       );
       return null;
     }
     return normalizeRegridFields(fields);
   } catch (e) {
     console.warn(
-      `[carbon-enrich] REGRID_THROW address=${address.slice(0, 80)} err=${
+      `[carbon-enrich] REGRID_THROW lat=${lat} lon=${lon} err=${
         e instanceof Error ? e.message : String(e)
       }`,
     );

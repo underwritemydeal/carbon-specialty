@@ -107,25 +107,86 @@ describe("enrichAddress", () => {
     expect(facts.sources_failed).toEqual(["regrid"]);
   });
 
-  it("returns regrid + streetview when geocoding fails — falls back to raw address for Regrid + Street View", async () => {
-    mockFetch((url) => {
+  it("skips Regrid when geocoding fails (C.S.1.6.7 — lat-lon lookup requires a point)", async () => {
+    // Regrid is now lat-lon-driven, not address-driven. Without
+    // geocoding there's no point to query, so Regrid is marked
+    // failed without even attempting the call. Street View still
+    // falls back to the raw address.
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
       if (url.includes("maps.googleapis.com/maps/api/geocode"))
-        return new Response(
-          JSON.stringify({ status: "ZERO_RESULTS", results: [] }),
-          { status: 200, headers: { "content-type": "application/json" } },
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ status: "ZERO_RESULTS", results: [] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
         );
-      if (url.includes("app.regrid.com/api/v2/parcels"))
-        return regridOk({ yearbuilt: 1985, numunits: 12 });
-      return new Response("not found", { status: 404 });
+      return Promise.resolve(new Response("not found", { status: 404 }));
     });
+    vi.stubGlobal("fetch", fetchSpy);
 
     const facts = await enrichAddress("Some Building, Long Beach");
     expect(facts.canonical_address).toBeUndefined();
-    expect(facts.year_built).toBe(1985);
-    expect(facts.units).toBe(12);
+    expect(facts.year_built).toBeUndefined();
+    expect(facts.units).toBeUndefined();
     expect(facts.street_view_url).toContain("Some+Building"); // raw fallback (URLSearchParams encodes space as +)
-    expect(facts.sources_succeeded.sort()).toEqual(["regrid", "streetview"]);
-    expect(facts.sources_failed).toEqual(["geocoding"]);
+    expect(facts.sources_succeeded.sort()).toEqual(["streetview"]);
+    expect(facts.sources_failed.sort()).toEqual(["geocoding", "regrid"]);
+    // Regrid endpoint was NOT called — no fetch hit app.regrid.com
+    const regridCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("app.regrid.com");
+    });
+    expect(regridCalls).toHaveLength(0);
+  });
+
+  it("calls Regrid /parcels/point with geocoded lat/lng + radius (C.S.1.6.7)", async () => {
+    // New lat-lon path. Confirm fetchRegrid hits the point endpoint
+    // with the lat/lon from the Google Geocoding response, NOT the
+    // raw user-typed address.
+    const fetchSpy = vi.fn((input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("maps.googleapis.com/maps/api/geocode")) return Promise.resolve(geocodingOk());
+      if (url.includes("app.regrid.com/api/v2/parcels/point")) {
+        return Promise.resolve(
+          regridOk({
+            yearbuilt: 1947,
+            numunits: 1,
+            bldg_sqft: 1450,
+            usecode: "1100",
+            usedesc: "Single Family Residential",
+          }),
+        );
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const facts = await enrichAddress("1418 E Edgemont Ave, Phoenix, AZ");
+
+    // The geocoded lat/lng (33.7766, -118.1933 from geocodingOk) should
+    // appear in the Regrid URL — not any version of the address string.
+    const regridCall = fetchSpy.mock.calls.find((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("app.regrid.com/api/v2/parcels/point");
+    });
+    expect(regridCall).toBeDefined();
+    const regridUrl = typeof regridCall![0] === "string" ? regridCall![0] : (regridCall![0] as URL).toString();
+    expect(regridUrl).toContain("lat=33.7766");
+    expect(regridUrl).toContain("lon=-118.1933");
+    expect(regridUrl).toContain("radius=");
+    expect(regridUrl).toContain("token=test-regrid-token");
+    // NOT the legacy address endpoint
+    expect(regridUrl).not.toContain("/parcels/address");
+
+    // Normalized fields landed
+    expect(facts.year_built).toBe(1947);
+    expect(facts.units).toBe(1);
+    expect(facts.square_feet).toBe(1450);
+    expect(facts.land_use_code).toBe("1100");
+    expect(facts.land_use_desc).toBe("Single Family Residential");
+    expect(facts.sources_succeeded.sort()).toEqual(["geocoding", "regrid", "streetview"]);
+    expect(facts.sources_failed).toEqual([]);
   });
 
   it("graceful-degrades when env vars are missing — no upstream calls, all sources_failed", async () => {
