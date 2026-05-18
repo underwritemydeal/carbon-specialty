@@ -162,6 +162,29 @@ When a rule fires, the building's `construction_type` is cleared on both the gro
 
 Sanity check applies in `fetchCACounty` (both the ArcGIS path and the Socrata SF path). Realie's flat path doesn't carry `stories`, so the check is effectively no-op there; if Realie ever exposes a stories field the check will start firing on Realie data too without code changes.
 
+### LA County construction code map — C.S.1.7.0f
+
+LA County's primary parcel layer publishes `DesignType1` (which sounds like a construction code but is actually a USE code mirroring `UseCode` — top values 0110/0120/0130 are single-family use codes) and `QualityClass1` (which is the real construction signal — composites like "D6B", "AX", "C45" where the leading letter is the IBC class and the trailing digits/letter encode the quality grade).
+
+C.S.1.7.0f rewired LA's registry entry: `constructionType` reads from `QualityClass1` (was wrongly `DesignType1`). A new `constructionCodeKeyExtractor: "firstChar"` option extracts the leading letter only for the IBC map lookup. `constructionQualityField` dropped (would duplicate the source).
+
+**Verified IBC distribution across LA's 2.17M-parcel roll:**
+
+| Leading letter | Count | IBC class |
+|---|---|---|
+| D | 2,061,337 | Wood Frame (Type V) |
+| C | 68,681 | Heavy Timber / Masonry (Type III) |
+| A | 11,635 | Fire-Resistive (Type I) |
+| B | 9,152 | Non-Combustible (Type II) |
+| S | 7,446 | Steel Frame |
+| garbage (digits / U / L / X / M / O / spaces) | ~2,000 | falls through map, passes verbatim — sanity check ignores at 12+ stories (no recognizable IBC marker) |
+
+**Per-building verification** (sanity check against real records):
+- 1247 Pine Ave Long Beach (1921 4-unit apt) → `QualityClass1="C45"` → Heavy Timber / Masonry (Type III) ✓
+- US Bank Tower 633 W 5th (1988 73-story skyscraper) → `QualityClass1="AX"` → Fire-Resistive (Type I) ✓
+
+The sanity check (C.S.1.7.0e) now fires correctly on LA-mapped strings. If a future joined LA layer surfaces `stories`, a 13-story building coded `D6B` → "Wood Frame (Type V)" trips Rule 1 and gets flagged for user confirmation. (LA today doesn't publish stories on the primary layer, so the check is currently no-op for LA in production — same posture as Realie.)
+
 ## Per-conversation cost model (Carbon's chat as of C.S.1.6)
 
 - LLM cost: $0.05-0.15 per chat (Haiku 4.5, prompt cached on system block)

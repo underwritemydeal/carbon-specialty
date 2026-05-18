@@ -79,6 +79,14 @@ export interface CACountyFields {
    *  raw constructionType value in the normalizer. Reusable by any
    *  future county that publishes coded types — new in C.S.1.7.0d. */
   constructionTypeMap?: Record<string, string>;
+  /** Optional key transform applied to the raw constructionType value
+   *  before looking it up in `constructionTypeMap`. When undefined, the
+   *  full raw value is the lookup key (SF: "D" → "Wood Frame…").
+   *  When `"firstChar"`, only the first character is used (LA's
+   *  QualityClass1 publishes "D6B"/"D55B"/"C45"/"AX" composites where
+   *  the leading letter is the IBC class and the trailing digits/letter
+   *  are the quality grade). Added in C.S.1.7.0f. */
+  constructionCodeKeyExtractor?: "firstChar";
 
   // Building — USEFUL
   /** Year of major rehab / effective age for valuation. LA's
@@ -233,8 +241,29 @@ export const LA_COUNTY: CACountyConfig = {
     yearBuilt: "YearBuilt1",
     buildingSqft: "SQFTmain1",
     units: "Units1",
-    constructionType: "DesignType1",
-    constructionQualityField: "QualityClass1",
+    // C.S.1.7.0f — switched from DesignType1 (which is a use code, NOT
+    // a construction code — verified by aggregation: DesignType1's top
+    // values are 0110/0130/0120 = single-family use codes) to
+    // QualityClass1, which encodes the IBC class in the leading letter
+    // ("D6B" = Wood Frame quality 6.B, "AX" = Fire-Resistive unknown
+    // quality, etc.). The constructionTypeMap + constructionCodeKey-
+    // Extractor below translate the leading letter into the
+    // human-readable IBC type. Constructionquality field dropped
+    // (would duplicate the source).
+    constructionType: "QualityClass1",
+    constructionCodeKeyExtractor: "firstChar",
+    constructionTypeMap: {
+      // Verified via distinct-aggregation on the 2.17M-parcel roll:
+      // D=2.06M, C=68K, A=12K, B=9K, S=7K cover 99.9% of records.
+      // Garbage leading-character values (digits, spaces, U/L/X/M/O)
+      // fall through and pass verbatim — sanity check ignores them
+      // at 12+ stories (no recognizable IBC marker).
+      D: "Wood Frame (Type V)",
+      C: "Heavy Timber / Masonry (Type III)",
+      B: "Non-Combustible (Type II)",
+      A: "Fire-Resistive (Type I)",
+      S: "Steel Frame",
+    },
     // stories: LA doesn't publish — undefined
 
     // Building — USEFUL
