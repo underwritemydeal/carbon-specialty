@@ -185,7 +185,14 @@ export async function fetchGeocoding(
       components.find((c) => c.types.includes(type))?.[key];
 
     const streetNumber = findComponent("street_number");
-    const route = findComponent("route");
+    // C.S.1.6.8 hot-fix — use `short_name` for the route so we get
+    // the abbreviated form Realie indexes on ("E Edgemont Ave" not
+    // "East Edgemont Avenue"). Realie's docs example shows the short
+    // form, and prod probes confirmed 404 with the long form for all
+    // three test addresses (Phoenix / Long Beach / Brooklyn). Switching
+    // to short_name picks up the abbreviation that Realie's address
+    // matcher expects.
+    const route = findComponent("route", "short_name");
     const street_line = [streetNumber, route].filter(Boolean).join(" ") || undefined;
 
     return {
