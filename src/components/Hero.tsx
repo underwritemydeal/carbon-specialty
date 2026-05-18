@@ -107,7 +107,9 @@ export function Hero() {
         />
       </div>
 
-      {/* === Top gradient overlay — masthead legibility === */}
+      {/* === Top gradient overlay — masthead legibility. Strengthened in
+              C.S.1.5.1: top 12% near-pure ink (ground for wordmark + nav +
+              eyebrow row), then fade to clear by 42%. === */}
       <div
         aria-hidden
         className="hero-overlay hero-overlay--top"
@@ -116,12 +118,15 @@ export function Hero() {
           inset: 0,
           zIndex: 1,
           background:
-            "linear-gradient(to bottom, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 30%)",
+            "linear-gradient(to bottom, rgba(11,11,12,0.92) 0%, rgba(11,11,12,0.92) 12%, rgba(11,11,12,0) 42%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* === Bottom gradient overlay — headline legibility + ink→paper transition === */}
+      {/* === Bottom gradient overlay — headline legibility + ink→paper
+              transition. Strengthened in C.S.1.5.1: bottom 15% near-pure
+              ink (ground for the italic "home." line), then fade to clear
+              by 55%. === */}
       <div
         aria-hidden
         className="hero-overlay hero-overlay--bottom"
@@ -130,7 +135,7 @@ export function Hero() {
           inset: 0,
           zIndex: 1,
           background:
-            "linear-gradient(to top, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 35%)",
+            "linear-gradient(to top, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 15%, rgba(11,11,12,0) 55%)",
           pointerEvents: "none",
         }}
       />
@@ -271,7 +276,11 @@ export function Hero() {
         {/* Spacer pushes the headline to the bottom third of the hero */}
         <div style={{ flex: 1 }} />
 
-        {/* HEADLINE — anchored bottom-third, left-aligned with masthead */}
+        {/* HEADLINE — line 1 anchored bottom-third (unchanged). Line 2
+            ("home." italic) drops further so its baseline sits ~5vh from
+            the bottom of the hero — squarely in the deepest portion of
+            the strengthened bottom gradient. Slight leading bump above
+            the italic line is intentional editorial spacing. */}
         <motion.h1
           id="hero-headline"
           className="hero-h1"
@@ -283,7 +292,7 @@ export function Hero() {
           }}
           style={{
             margin: 0,
-            paddingBottom: 64,
+            paddingBottom: "5vh",
             fontFamily: "var(--font-display)",
             fontWeight: 400,
             fontSize: "clamp(56px, 8.5vw, 120px)",
@@ -298,7 +307,7 @@ export function Hero() {
             <Word key={i} reduce={reduce}>{w}</Word>
           ))}
           <br />
-          <span style={{ display: "inline-block", marginTop: "0.2em" }}>
+          <span style={{ display: "inline-block", marginTop: "0.4em" }}>
             <Accent reduce={reduce} stagger={headlineWords.length}>{HEADLINE_LINE_2}</Accent>
           </span>
         </motion.h1>
@@ -341,11 +350,15 @@ export function Hero() {
            reads as the inverse of its rest state. Border stays paper. */
         .hero-quote-btn:hover { background: var(--paper) !important; color: var(--ink) !important; }
 
-        /* Bottom gradient grows on mobile to give the smaller headline more
-           legibility room (per spec — ~45% of hero on mobile). */
-        @media (max-width: 600px) {
+        /* Mobile gradient strengthening — C.S.1.5.1.
+           Top:    18% near-pure ink → clear at 50%
+           Bottom: 20% near-pure ink → clear at 65% */
+        @media (max-width: 480px) {
+          .hero-overlay--top {
+            background: linear-gradient(to bottom, rgba(11,11,12,0.92) 0%, rgba(11,11,12,0.92) 18%, rgba(11,11,12,0) 50%) !important;
+          }
           .hero-overlay--bottom {
-            background: linear-gradient(to top, rgba(11,11,12,0.7) 0%, rgba(11,11,12,0) 45%) !important;
+            background: linear-gradient(to top, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 20%, rgba(11,11,12,0) 65%) !important;
           }
         }
 
@@ -408,6 +421,10 @@ function Accent({
         fontWeight: 400,
         color: "var(--ember)",
         paddingRight: "0.06em",
+        // C.S.1.5.1 — soft, large-radius ink halo so the pine italic
+        // reads cleanly against the video; the strengthened bottom
+        // gradient does most of the work.
+        textShadow: "0 2px 32px rgba(11, 11, 12, 0.5)",
       }}
     >
       {children}
