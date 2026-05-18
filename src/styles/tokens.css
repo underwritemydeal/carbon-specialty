@@ -215,7 +215,13 @@
   gap: 0; /* spacing is owned by .wm-mark (rule slot) and .wm-sub (top margin) */
   color: var(--ink);
 }
-.wordmark.align-left { align-items: flex-start; }
+/* `.align-left` keeps the wordmark's outer box left-anchored in its
+   parent grid cell (the wordmark is inline-flex, so its outer width
+   equals its widest child either way). Internally, CARBON and the
+   SPECIALTY · INSURANCE sub-line stay center-aligned to each other —
+   sprint C.S.1.5.3: CARBON visually centers over the wider sub-line
+   rather than pinning to its left edge. */
+.wordmark.align-left { align-items: center; }
 
 /* .wm-mark wraps the name + rule so the rule's positioning is scoped to
    CARBON's visual width — not the wider wordmark flex container. With
