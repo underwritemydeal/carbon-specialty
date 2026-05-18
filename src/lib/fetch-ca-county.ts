@@ -76,10 +76,34 @@ export type CACountyFacts = Partial<
  *   - the ArcGIS query failed (logged via arcgis-client diagnostics)
  *   - the ArcGIS query returned zero features (no parcel near the point)
  */
+/** Optional caller-supplied context for narrowing the parcel choice
+ *  when the geometry query returns multiple candidates. C.S.1.7.0i
+ *  added `streetNumber` after a production bug where Google geocoded
+ *  "1266 Stanyan St SF" to a lat/lng closer to neighboring APN 1289070
+ *  (1260 Stanyan, SFR, 1 unit) than to the real APN 1289068 (1266
+ *  Stanyan, **18-unit Multi-Family Residential**). The 50m radius
+ *  picked the nearest by geometry — wrong building. Address-number
+ *  alignment fixes it. */
+export interface FetchCACountyOptions {
+  /** Street number from Google's address_components (e.g. "1266"). When
+   *  set, parcel candidates whose published address field contains this
+   *  token as a discrete word are preferred over geometrically-nearest
+   *  alternatives. Falls back silently if no match found. */
+  streetNumber?: string;
+}
+
+/** Widened search radius for the C.S.1.7.0i address-aware matching.
+ *  200m comfortably catches a parcel whose geocode lands on the next
+ *  building over (Stanyan case was ~150m). Cached, so the extra
+ *  feature count is a one-time cost per unique geocode. */
+const PARCEL_MATCH_RADIUS_M = 200;
+const PARCEL_MATCH_CANDIDATES = 20;
+
 export async function fetchCACounty(
   lat: number,
   lon: number,
   detectedCounty: string | undefined,
+  options: FetchCACountyOptions = {},
 ): Promise<CACountyFacts | null> {
   const county = findCACounty(detectedCounty);
   if (!county) return null;
@@ -88,18 +112,27 @@ export async function fetchCACounty(
   // OC, Riverside) take the original FeatureServer path. Socrata
   // counties (SF) take the SoQL path.
   if (county.client === "socrata") {
-    return fetchSocrataCounty(lat, lon, county);
+    return fetchSocrataCounty(lat, lon, county, options);
   }
 
+  // C.S.1.7.0i — widen the geometry query so we can disambiguate by
+  // street number when Google geocodes to a neighboring parcel.
+  // resultRecordCount: 20 is generous for urban density; the address-
+  // match picker below handles selecting the right candidate.
   const features = await queryFeatureService(county.featureServiceUrl, {
     point: { lat, lon },
-    radiusMeters: county.defaultRadiusMeters,
+    radiusMeters: PARCEL_MATCH_RADIUS_M,
     outFields: "*",
-    resultRecordCount: 1,
+    resultRecordCount: PARCEL_MATCH_CANDIDATES,
   });
   if (!features || features.length === 0) return null;
 
-  const attrs = features[0].attributes;
+  const pickedAttrs = pickBestCandidateByStreetNumber(
+    features.map((f) => f.attributes),
+    county.fields.address,
+    options.streetNumber,
+  );
+  const attrs = pickedAttrs;
   const out = normalizeCountyFeature(attrs, county);
 
   // C.S.1.7.0c — optional second-query table join. Riverside is the
@@ -145,23 +178,86 @@ async function fetchSocrataCounty(
   lat: number,
   lon: number,
   county: CACountyConfig,
+  options: FetchCACountyOptions = {},
 ): Promise<CACountyFacts | null> {
   const cfg = county.socrata;
   if (!cfg) return null;
 
+  // C.S.1.7.0i — widen radius + return 20 candidates so the
+  // address-number picker can disambiguate (canonical case:
+  // "1266 Stanyan St SF" geocoding lat/lng was closer to APN
+  // 1289070 = 1260 Stanyan SFR than to APN 1289068 = 1266 Stanyan
+  // 18-unit MRES).
   const rows = await querySocrataDataset(cfg.datasetUrl, {
     point: { lat, lon },
-    radiusMeters: county.defaultRadiusMeters,
+    radiusMeters: PARCEL_MATCH_RADIUS_M,
     geometryField: cfg.geometryField,
     baseWhere: cfg.baseWhere,
-    limit: 1,
+    limit: PARCEL_MATCH_CANDIDATES,
   });
   if (!rows || rows.length === 0) return null;
 
-  const out = normalizeCountyFeature(rows[0], county);
+  const picked = pickBestCandidateByStreetNumber(
+    rows,
+    county.fields.address,
+    options.streetNumber,
+  );
+  const out = normalizeCountyFeature(picked, county);
   // C.S.1.7.0e — sanity check (SF is the canonical target: 550
   // California Street codes "D" / Wood Frame on a 13-story office).
   return sanityCheckConstruction(out);
+}
+
+/* =========================================================================
+ * Address-aware candidate picker — C.S.1.7.0i
+ *
+ * The geometry query alone is biased by Google's geocoder accuracy. For
+ * dense urban blocks (canonical case: 1266 Stanyan SF) the geocoded
+ * lat/lng can land on a neighboring parcel, and a 50m radius picks the
+ * geometrically-nearest match over the address-correct one. We widen
+ * the query to ~200m + 20 candidates, then prefer the candidate whose
+ * published address field contains the user-typed street number as a
+ * discrete token.
+ *
+ * Algorithm:
+ *   1. If no streetNumber supplied or no addressField configured for
+ *      this county, return the first (geometrically-nearest) candidate.
+ *      Preserves pre-sprint behavior for callers that don't pass the
+ *      number.
+ *   2. Otherwise, scan candidates for one whose addressField value
+ *      contains the street number as a whole-word token (word-boundary
+ *      regex). Many county address fields have leading-zero padding
+ *      ("0000 1266 STANYAN ST0000" for SF), so we use \b not exact eq.
+ *   3. If no candidate matches, fall back to the first (nearest) —
+ *      defensive: never crash a probe that worked pre-sprint just
+ *      because the picker found no string-match (e.g. street_number
+ *      missing from county field, hyphenated address ranges, etc.).
+ * ========================================================================= */
+
+export function pickBestCandidateByStreetNumber<
+  T extends Record<string, unknown>,
+>(
+  candidates: T[],
+  addressField: string | undefined,
+  streetNumber: string | undefined,
+): T {
+  if (candidates.length === 0) {
+    throw new Error("pickBestCandidateByStreetNumber: no candidates");
+  }
+  if (!streetNumber || !addressField) return candidates[0];
+
+  // Word-boundary match. Escape any regex metachars in the number
+  // (defensive — Google street numbers are typically digits but
+  // hyphenated forms like "1266-A" are not unheard of).
+  const escaped = streetNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\b${escaped}\\b`);
+
+  for (const c of candidates) {
+    const raw = c[addressField];
+    if (typeof raw !== "string") continue;
+    if (re.test(raw)) return c;
+  }
+  return candidates[0];
 }
 
 /* =========================================================================

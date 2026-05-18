@@ -4,6 +4,7 @@ import {
   fetchCACounty,
   mergeJoinedBuilding,
   normalizeCountyFeature,
+  pickBestCandidateByStreetNumber,
   type CACountyFacts,
 } from "./fetch-ca-county";
 import {
@@ -411,7 +412,8 @@ describe("fetchCACounty", () => {
     const decoded = decodeURIComponent(callUrl);
     expect(decoded).toContain(`"x":${LB_PINE_LON}`);
     expect(decoded).toContain(`"y":${LB_PINE_LAT}`);
-    expect(decoded).toContain("distance=50"); // LA's defaultRadiusMeters
+    // C.S.1.7.0i widened radius to 200m for address-aware matching.
+    expect(decoded).toContain("distance=200");
 
     // Normalized output landed
     expect(out?.parcel_id).toBe("7273-004-008");
@@ -1062,8 +1064,8 @@ describe("fetchCACounty — SF dispatch (Socrata client, C.S.1.7.0d)", () => {
     expect(url).toContain("data.sfgov.org/resource/wv5m-vpq2.json");
     // URLSearchParams encodes spaces as '+'; normalize for assertion.
     const decoded = decodeURIComponent(url).replace(/\+/g, " ");
-    // within_circle SoQL function with lat/lng + 50m default radius
-    expect(decoded).toContain(`within_circle(the_geom,${PAC_HEIGHTS_LAT},${PAC_HEIGHTS_LON},50)`);
+    // C.S.1.7.0i widened to 200m for address-aware matching.
+    expect(decoded).toContain(`within_circle(the_geom,${PAC_HEIGHTS_LAT},${PAC_HEIGHTS_LON},200)`);
     // baseWhere pinning to the latest closed_roll_year
     expect(decoded).toContain("closed_roll_year='2024'");
 
@@ -1221,5 +1223,235 @@ describe("normalizeCountyFeature — Riverside County", () => {
     expect(out.year_built).toBeUndefined();
     expect(out.square_feet).toBeUndefined();
     expect(out.units).toBeUndefined();
+  });
+});
+
+/* =========================================================================
+ * Address-aware parcel matching — C.S.1.7.0i
+ * =========================================================================
+ *
+ * Production report: "1266 Stanyan St SF" → chat described the
+ * property as a 1-unit single-family home (1572 sqft, 1979). Actual
+ * building is 18-unit multifamily (11970 sqft, 1962). Root cause: SF
+ * Tax Rolls geometry query at the geocoded lat/lng returned the
+ * nearest parcel (APN 1289070 = 1260 Stanyan, SFR) instead of the
+ * address-correct one (APN 1289068 = 1266 Stanyan, MRES) — the real
+ * 1266 parcel was ~150m from the geocoded center, outside the
+ * pre-sprint 50m radius.
+ *
+ * Fix: widen radius to 200m + return up to 20 candidates + prefer
+ * the candidate whose published address field matches the user-typed
+ * street number as a discrete token. Falls back to nearest if no
+ * match. Applies to both ArcGIS and Socrata client paths.
+ * ========================================================================= */
+
+describe("pickBestCandidateByStreetNumber — C.S.1.7.0i", () => {
+  it("returns the first candidate when no streetNumber is supplied (pre-sprint behavior)", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: "0000 1260 STANYAN ST0000" },
+        { property_location: "0000 1266 STANYAN ST0000" },
+      ],
+      "property_location",
+      undefined,
+    );
+    expect(picked.property_location).toContain("1260");
+  });
+
+  it("returns the first candidate when no addressField is configured", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [{ x: 1 }, { x: 2 }],
+      undefined,
+      "1266",
+    );
+    expect(picked.x).toBe(1);
+  });
+
+  it("prefers the candidate whose addressField contains the street number as a whole word — SF Stanyan case", () => {
+    // Shaped from a live SF DataSF probe. 1260 Stanyan is nearest by
+    // geometry to the geocoded "1266 Stanyan" lat/lng; 1266 Stanyan
+    // is the address-correct parcel and the 18-unit MRES we want.
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: "0000 1260 STANYAN             ST0000" },
+        { property_location: "1563 1561 SHRADER             ST0000" },
+        { property_location: "0000 1266 STANYAN             ST0000" },
+        { property_location: "0000 1250 STANYAN             ST0000" },
+      ],
+      "property_location",
+      "1266",
+    );
+    expect(picked.property_location).toContain("1266");
+  });
+
+  it("falls back to the first candidate when no candidate matches the street number", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: "0000 1260 STANYAN ST0000" },
+        { property_location: "0000 1250 STANYAN ST0000" },
+      ],
+      "property_location",
+      "1266",
+    );
+    // 1266 not present → return nearest (1260)
+    expect(picked.property_location).toContain("1260");
+  });
+
+  it("uses word-boundary matching — '1266' must not match '12660' as a substring", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: "12660 PINE AVE" }, // substring contains 1266
+        { property_location: "1266 PINE AVE" }, // actual match
+      ],
+      "property_location",
+      "1266",
+    );
+    expect(picked.property_location).toBe("1266 PINE AVE");
+  });
+
+  it("handles LA's SitusFullAddress format (different field name + different padding)", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { SitusFullAddress: "125 W 12TH ST LONG BEACH CA 90813" },
+        { SitusFullAddress: "1247 PINE AVE LONG BEACH CA 90813" },
+      ],
+      "SitusFullAddress",
+      "1247",
+    );
+    expect(picked.SitusFullAddress).toContain("1247 PINE");
+  });
+
+  it("escapes regex metachars in the street number (defensive — hyphenated/alphanumeric forms)", () => {
+    // Numbers like "1266-A" exist in some jurisdictions. The escape
+    // is defensive so a stray bracket can't break the matcher.
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: "1266-A STANYAN ST" },
+        { property_location: "1266-B STANYAN ST" },
+      ],
+      "property_location",
+      "1266-A",
+    );
+    expect(picked.property_location).toBe("1266-A STANYAN ST");
+  });
+
+  it("skips candidates whose addressField is not a string (defensive)", () => {
+    const picked = pickBestCandidateByStreetNumber(
+      [
+        { property_location: null },
+        { property_location: 12345 },
+        { property_location: "1266 STANYAN ST" },
+      ],
+      "property_location",
+      "1266",
+    );
+    expect(picked.property_location).toBe("1266 STANYAN ST");
+  });
+});
+
+describe("fetchCACounty — address-aware parcel matching integration (C.S.1.7.0i)", () => {
+  const STANYAN_LAT = 37.760422;
+  const STANYAN_LON = -122.451364;
+
+  it("SF Stanyan production case — prefers APN 1289068 (1266 Stanyan, 18-unit MRES) over nearest 1289070 (1260 Stanyan, SFR)", async () => {
+    // Shaped from a live SF DataSF within_circle probe at the
+    // geocoded "1266 Stanyan" lat/lng. 1260 returns first by geometry;
+    // the picker should prefer the address-matching 1266.
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        {
+          parcel_number: "1289070",
+          property_location: "0000 1260 STANYAN             ST0000",
+          use_code: "SRES",
+          use_definition: "Single Family Residential",
+          number_of_units: "1.0",
+          property_area: "1572.0",
+          year_property_built: "1979",
+        },
+        {
+          parcel_number: "1289068",
+          property_location: "0000 1266 STANYAN             ST0000",
+          use_code: "MRES",
+          use_definition: "Multi-Family Residential",
+          number_of_units: "18.0",
+          property_area: "11970.0",
+          year_property_built: "1962",
+        },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(
+      STANYAN_LAT,
+      STANYAN_LON,
+      "San Francisco County",
+      { streetNumber: "1266" },
+    );
+
+    // Picked the address-correct multifamily, not the geometrically-nearest SFR
+    expect(out?.parcel_id).toBe("1289068");
+    expect(out?.units).toBe(18);
+    expect(out?.land_use_desc).toBe("Multi-Family Residential");
+    expect(out?.year_built).toBe(1962);
+    expect(out?.square_feet).toBe(11970);
+  });
+
+  it("widens the SF Socrata query to 200m radius + 20 candidates (verified in the URL)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        { parcel_number: "X", property_location: "0000 1266 TEST ST" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(STANYAN_LAT, STANYAN_LON, "San Francisco County", {
+      streetNumber: "1266",
+    });
+    const url = decodeURIComponent(fetchSpy.mock.calls[0][0] as string).replace(/\+/g, " ");
+    expect(url).toContain(`within_circle(the_geom,${STANYAN_LAT},${STANYAN_LON},200)`);
+    expect(url).toContain("$limit=20");
+  });
+
+  it("widens the LA ArcGIS query to 200m radius + 20 candidates", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(arcgisResponse(LA_FULL_RECORD));
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(LB_PINE_LAT, LB_PINE_LON, "Los Angeles County", {
+      streetNumber: "125",
+    });
+    const url = decodeURIComponent(fetchSpy.mock.calls[0][0] as string);
+    expect(url).toContain("distance=200");
+    expect(url).toContain("resultRecordCount=20");
+  });
+
+  it("preserves pre-sprint behavior when no streetNumber is passed (picks first / nearest)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        { parcel_number: "A", property_location: "0000 1260 STANYAN ST" },
+        { parcel_number: "B", property_location: "0000 1266 STANYAN ST" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const out = await fetchCACounty(
+      STANYAN_LAT,
+      STANYAN_LON,
+      "San Francisco County",
+      // No streetNumber → first candidate wins
+    );
+    expect(out?.parcel_id).toBe("A");
+  });
+
+  it("falls back to first candidate when streetNumber doesn't match any candidate (defensive)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        { parcel_number: "A", property_location: "0000 1260 STANYAN ST" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const out = await fetchCACounty(
+      STANYAN_LAT,
+      STANYAN_LON,
+      "San Francisco County",
+      { streetNumber: "9999" },
+    );
+    expect(out?.parcel_id).toBe("A");
   });
 });
