@@ -43,13 +43,15 @@
 export type EnrichmentSource =
   | "geocoding"
   | "realie"
-  // CA county-direct ArcGIS sources. C.S.1.7.0a added LA. C.S.1.7.0b
-  // added SD, Riverside, OC. Slugs match the `slug` field on each
-  // CACountyConfig entry in src/lib/ca-county-registry.ts.
+  // CA county-direct sources. C.S.1.7.0a added LA. C.S.1.7.0b added
+  // SD, Riverside, OC. C.S.1.7.0d added SF (first Socrata-client
+  // county). Slugs match the `slug` field on each CACountyConfig
+  // entry in src/lib/ca-county-registry.ts.
   | "la-county"
   | "san-diego-county"
   | "orange-county"
   | "riverside-county"
+  | "san-francisco-county"
   | "streetview";
 
 /* =========================================================================

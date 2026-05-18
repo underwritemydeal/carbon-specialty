@@ -11,6 +11,7 @@ import {
   SAN_DIEGO_COUNTY,
   ORANGE_COUNTY,
   RIVERSIDE_COUNTY,
+  SAN_FRANCISCO_COUNTY,
   findCACounty,
 } from "./ca-county-registry";
 
@@ -41,6 +42,14 @@ function arcgisMulti(features: Array<{ attributes: Record<string, unknown> }>) {
 function arcgisEmpty() {
   return new Response(
     JSON.stringify({ features: [] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+/** Socrata response — plain array of rows, no features wrapper. */
+function socrataResponse(rows: Array<Record<string, unknown>>) {
+  return new Response(
+    JSON.stringify(rows),
     { status: 200, headers: { "content-type": "application/json" } },
   );
 }
@@ -81,9 +90,14 @@ describe("findCACounty", () => {
     expect(findCACounty("Los Angeles")?.slug).toBe("la-county");
   });
 
-  it("returns null for unknown counties (SF not yet in registry, SB explicitly skipped C.S.1.7.0b)", () => {
-    expect(findCACounty("San Francisco County")).toBeNull();
+  it("returns null for unknown counties (SB explicitly skipped C.S.1.7.0b; SF added C.S.1.7.0d)", () => {
     expect(findCACounty("San Bernardino County")).toBeNull();
+    expect(findCACounty("Fresno County")).toBeNull();
+  });
+
+  it("matches San Francisco County (C.S.1.7.0d — first Socrata client)", () => {
+    expect(findCACounty("San Francisco County")?.slug).toBe("san-francisco-county");
+    expect(findCACounty("San Francisco")?.slug).toBe("san-francisco-county");
   });
 
   it("returns null for empty / undefined input", () => {
@@ -244,10 +258,10 @@ describe("normalizeCountyFeature — USEFUL fields wiring (C.S.1.7.0b)", () => {
 });
 
 describe("fetchCACounty", () => {
-  it("returns null without calling ArcGIS when the county isn't in the registry (SF)", async () => {
+  it("returns null without calling ArcGIS when the county isn't in the registry (Fresno)", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    const out = await fetchCACounty(37.7749, -122.4194, "San Francisco County");
+    const out = await fetchCACounty(36.7378, -119.7871, "Fresno County");
     expect(out).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -742,6 +756,239 @@ describe("fetchCACounty — non-join counties never fire a 2nd query (C.S.1.7.0c
     vi.stubGlobal("fetch", fetchSpy);
     await fetchCACounty(33.7455, -117.8677, "Orange County");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* =========================================================================
+ * San Francisco — Socrata client (C.S.1.7.0d)
+ * =========================================================================
+ *
+ * SF is the first Socrata-client county in the registry. Two test
+ * concerns: (1) the field-mapping normalizer translates SF Tax Rolls
+ * field names + applies the construction-type code map, and (2)
+ * fetchCACounty dispatches the Socrata path correctly without
+ * touching the ArcGIS path used by the other 4 counties.
+ *
+ * Records shaped from live SF DataSF probes:
+ *   2420 Pacific Ave (SFR) — APN 0582025, year 1908, ct=D, 4 stories
+ *   2098 Mission St (MRES) — APN 3569016A, year 1906, ct=D, 3 units
+ *   550 California St (Commercial) — APN 0240020, year 1960, ct=B
+ * ========================================================================= */
+
+const SF_SFR_RECORD: Record<string, unknown> = {
+  closed_roll_year: "2024",
+  parcel_number: "0582025",
+  property_location: "0000 2420 PACIFIC             AV0000",
+  use_code: "SRES",
+  use_definition: "Single Family Residential",
+  property_class_code_definition: "Dwelling",
+  year_property_built: "1908",
+  number_of_units: "1.0",
+  property_area: "10467.0",
+  construction_type: "D", // → "Wood Frame (Type V)" via map
+  number_of_stories: "4.0",
+  number_of_bedrooms: "6.0",
+  number_of_bathrooms: "4.0",
+  // DROP-list fields still present in the source — verified untouched:
+  lot_area: "6764.0",
+  assessed_improvement_value: "7500732.0",
+  assessed_land_value: "16511910.0",
+  current_sales_date: "2020-04-03T00:00:00.000",
+};
+
+describe("normalizeCountyFeature — San Francisco (Socrata, C.S.1.7.0d)", () => {
+  it("extracts the full SFR record + applies construction-type code map", () => {
+    const out = normalizeCountyFeature(SF_SFR_RECORD, SAN_FRANCISCO_COUNTY);
+    expect(out.source_tag).toBe("san-francisco-county");
+    expect(out.parcel_id).toBe("0582025");
+    // Building — CRITICAL
+    expect(out.building?.use_code).toBe("SRES");
+    expect(out.building?.use_desc).toBe("Single Family Residential");
+    expect(out.building?.year_built).toBe(1908);
+    expect(out.building?.units).toBe(1);
+    expect(out.building?.building_sqft).toBe(10467);
+    expect(out.building?.stories).toBe(4);
+    // The construction-type code map turns "D" into the human-readable string
+    expect(out.building?.construction_type).toBe("Wood Frame (Type V)");
+    // Building — USEFUL
+    expect(out.building?.bedrooms).toBe(6);
+    expect(out.building?.bathrooms).toBe(4);
+    // Flat-field flatten
+    expect(out.year_built).toBe(1908);
+    expect(out.square_feet).toBe(10467);
+    expect(out.units).toBe(1);
+    expect(out.construction_type).toBe("Wood Frame (Type V)");
+    expect(out.land_use_code).toBe("SRES");
+    expect(out.land_use_desc).toBe("Single Family Residential");
+    // C.S.1.7.0b — DROP-list fields stay undefined (source still publishes them)
+    // @ts-expect-error — lot_size_sqft removed from PropertyFacts flat fields
+    expect(out.lot_size_sqft).toBeUndefined();
+    // @ts-expect-error — transaction removed from PropertyFacts
+    expect(out.transaction).toBeUndefined();
+    // @ts-expect-error — lot_sqft removed from BuildingFacts
+    expect(out.building?.lot_sqft).toBeUndefined();
+    // SF doesn't publish owner data on this dataset
+    expect(out.owner).toBeUndefined();
+  });
+
+  it("extracts a Mission District multifamily record", () => {
+    const out = normalizeCountyFeature(
+      {
+        parcel_number: "3569016A",
+        property_location: "2098 2094 MISSION ST",
+        use_code: "MRES",
+        use_definition: "Multi-Family Residential",
+        year_property_built: "1906",
+        number_of_units: "3.0",
+        property_area: "5290.0",
+        construction_type: "D",
+        number_of_stories: "3.0",
+        number_of_bedrooms: "8.0",
+        number_of_bathrooms: "5.0",
+      },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.units).toBe(3);
+    expect(out.year_built).toBe(1906);
+    expect(out.square_feet).toBe(5290);
+    expect(out.land_use_desc).toBe("Multi-Family Residential");
+    expect(out.construction_type).toBe("Wood Frame (Type V)");
+    expect(out.building?.bedrooms).toBe(8);
+  });
+
+  it("translates 'A' construction code to 'Fire-Resistive (Type I)'", () => {
+    const out = normalizeCountyFeature(
+      { parcel_number: "X", construction_type: "A" },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Fire-Resistive (Type I)");
+  });
+
+  it("translates 'B' construction code to 'Non-Combustible (Type II)'", () => {
+    const out = normalizeCountyFeature(
+      { parcel_number: "X", construction_type: "B" },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Non-Combustible (Type II)");
+  });
+
+  it("translates 'S' construction code to 'Steel Frame'", () => {
+    const out = normalizeCountyFeature(
+      { parcel_number: "X", construction_type: "S" },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Steel Frame");
+  });
+
+  it("falls through unmapped construction codes verbatim (don't guess)", () => {
+    const out = normalizeCountyFeature(
+      { parcel_number: "X", construction_type: "ZZ" },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("ZZ");
+  });
+
+  it("translates 'NA' construction code to 'Unknown (per assessor)' (47K parcels)", () => {
+    const out = normalizeCountyFeature(
+      { parcel_number: "X", construction_type: "NA" },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Unknown (per assessor)");
+  });
+
+  it("handles sparse records (only parcel_number — Commercial with no br/ba)", () => {
+    const out = normalizeCountyFeature(
+      {
+        parcel_number: "0135003",
+        use_code: "COMO",
+        use_definition: "Commercial Office",
+        year_property_built: "1923",
+        property_area: "92465.0",
+        construction_type: "B",
+        number_of_stories: "4.0",
+      },
+      SAN_FRANCISCO_COUNTY,
+    );
+    expect(out.year_built).toBe(1923);
+    expect(out.square_feet).toBe(92465);
+    expect(out.land_use_desc).toBe("Commercial Office");
+    expect(out.construction_type).toBe("Non-Combustible (Type II)");
+    expect(out.building?.bedrooms).toBeUndefined();
+    expect(out.building?.bathrooms).toBeUndefined();
+  });
+});
+
+describe("fetchCACounty — SF dispatch (Socrata client, C.S.1.7.0d)", () => {
+  const PAC_HEIGHTS_LAT = 37.793472;
+  const PAC_HEIGHTS_LON = -122.432823;
+
+  it("uses the Socrata path and hits data.sfgov.org with within_circle + baseWhere", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(socrataResponse([SF_SFR_RECORD]));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(
+      PAC_HEIGHTS_LAT,
+      PAC_HEIGHTS_LON,
+      "San Francisco County",
+    );
+
+    // Exactly one fetch call — Socrata path doesn't have a table-join branch
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain("data.sfgov.org/resource/wv5m-vpq2.json");
+    // URLSearchParams encodes spaces as '+'; normalize for assertion.
+    const decoded = decodeURIComponent(url).replace(/\+/g, " ");
+    // within_circle SoQL function with lat/lng + 50m default radius
+    expect(decoded).toContain(`within_circle(the_geom,${PAC_HEIGHTS_LAT},${PAC_HEIGHTS_LON},50)`);
+    // baseWhere pinning to the latest closed_roll_year
+    expect(decoded).toContain("closed_roll_year='2024'");
+
+    // Normalized output landed
+    expect(out?.parcel_id).toBe("0582025");
+    expect(out?.year_built).toBe(1908);
+    expect(out?.construction_type).toBe("Wood Frame (Type V)");
+    expect(out?.source_tag).toBe("san-francisco-county");
+  });
+
+  it("returns null when Socrata returns zero rows", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(socrataResponse([])));
+    const out = await fetchCACounty(PAC_HEIGHTS_LAT, PAC_HEIGHTS_LON, "San Francisco County");
+    expect(out).toBeNull();
+  });
+
+  it("returns null when Socrata returns 503 (graceful degradation)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("upstream busy", { status: 503 })),
+    );
+    const out = await fetchCACounty(PAC_HEIGHTS_LAT, PAC_HEIGHTS_LON, "San Francisco County");
+    expect(out).toBeNull();
+  });
+
+  it("returns null when Socrata returns an error envelope (200 with errorCode)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ errorCode: "query.soql.no-such-column", message: "bad column" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    const out = await fetchCACounty(PAC_HEIGHTS_LAT, PAC_HEIGHTS_LON, "San Francisco County");
+    expect(out).toBeNull();
+  });
+
+  it("never calls the ArcGIS layer URL (it's empty for Socrata clients)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(socrataResponse([SF_SFR_RECORD]));
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(PAC_HEIGHTS_LAT, PAC_HEIGHTS_LON, "San Francisco County");
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).not.toContain("FeatureServer");
+    expect(url).not.toContain("services3.arcgis.com");
   });
 });
 

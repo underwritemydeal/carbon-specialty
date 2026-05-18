@@ -60,7 +60,7 @@ geocoding (Google) → if CA + county in registry → county-direct ArcGIS
 
 | Provider | Coverage | Pricing | Carbon's verdict |
 |---|---|---|---|
-| **CA county-direct (ArcGIS REST)** | Per-county. **Registry: LA, San Diego, Orange, Riverside** (C.S.1.7.0a + C.S.1.7.0b + C.S.1.7.0c). Pattern is a generic `arcgis-client.ts` + per-county field registry (`ca-county-registry.ts`). Some counties split data across a primary parcel layer and a joined characteristics table (see **Table-join pattern** below). | Free (public-records data) | **Selected for CA Phase 1.** Direct integration avoids the third-party-aggregator coverage gaps that bit Carbon on Regrid (C.S.1.6.6/7) and Realie (C.S.1.6.8). Field scope is **insurance-tuned** (C.S.1.7.0b retune) — CRITICAL fields (use code, year built, building sqft, units, construction, stories) + USEFUL fields (effective year built, sprinklered, roof type, bed/bath). DROP-list (lot sqft, sale data, assessed value, tax-exempt) intentionally excluded. **CRITICAL coverage per county after C.S.1.7.0c**: LA: ✅ all 5 + effective year + bed/bath. SD: 4 of 5 (no construction). **Riverside: ✅ year + sqft + construction + stories + bed/bath via the new CREST_PROPERTY_CHAR join (C.S.1.7.0c) — units still unmapped (encoded in CLASS_CODE string on primary layer).** OC: use code/desc only (no year/sqft/units published). Riverside + OC publish owner mailing — first CA counties in registry to do so. **SB skipped** — SB's public ArcGIS surfaces only geometry + APN; future sprint either pays for SB Esri portal access or routes SB through a different source. |
+| **CA county-direct (ArcGIS + Socrata)** | Per-county. **Registry: LA, San Diego, Orange, Riverside (ArcGIS) + San Francisco (Socrata)** as of C.S.1.7.0d. Generic clients (`arcgis-client.ts`, `socrata-client.ts`) + per-county field registry (`ca-county-registry.ts`) + client-type dispatcher in `fetch-ca-county.ts`. Some counties split data across a primary parcel layer and a joined characteristics table (see **Table-join pattern** below). | Free (public-records data) | **Selected for CA Phase 1.** Direct integration avoids the third-party-aggregator coverage gaps that bit Carbon on Regrid (C.S.1.6.6/7) and Realie (C.S.1.6.8). Field scope is **insurance-tuned** (C.S.1.7.0b retune) — CRITICAL fields (use code, year built, building sqft, units, construction, stories) + USEFUL fields (effective year built, sprinklered, roof type, bed/bath). DROP-list (lot sqft, sale data, assessed value, tax-exempt) intentionally excluded. **CRITICAL coverage per county after C.S.1.7.0d**: LA ✅ all 5 + effective year + bed/bath. SD 4 of 5 (no construction). **Riverside ✅ year + sqft + construction + stories + bed/bath via the CREST_PROPERTY_CHAR join (C.S.1.7.0c) — units still unmapped (encoded in CLASS_CODE).** OC use code/desc only (no year/sqft/units published). **SF ✅ all 5 + bed/bath via SF DataSF Tax Rolls (C.S.1.7.0d) — best single-dataset coverage of any wired county, plus construction-type coded letters mapped to human-readable ISO classes via `constructionTypeMap`.** Riverside + OC publish owner mailing — first CA counties to do so. **SB skipped** — SB's public ArcGIS surfaces only geometry + APN. |
 | **Realie.ai** | Nationwide US property data | Free tier 25 req/month + $0.15/overage | **Selected as the non-CA + CA-fallback path** (C.S.1.6.8). Address Lookup endpoint. Returns thin shape for most CA addresses, which is why CA routes to county-direct first. |
 | **Google Geocoding API** | Worldwide addresses + lat/lng + structured address components | $5 per 1k geocodes after free tier | **Selected** — primary geocoder. The structured `address_components` parsing (street_number, route, locality, county, state) is what enables both Realie's required-field URL shape and the county-direct routing in C.S.1.7.0a. |
 | **Google Places API** | Address autocomplete, POI data | Free tier generous | **Selected** for chat input autocomplete. |
@@ -108,6 +108,43 @@ Units intentionally NOT mapped — CREST_PROPERTY_CHAR doesn't publish a unit-co
 **Other CA counties likely to use this pattern** (verified shape, not yet wired): San Bernardino's `cAESGISTable` MapServer/3 has APN+geometry only — a private characteristics table may exist behind staff auth (out of scope for Carbon Phase 1). LA County's setup is the opposite — everything (87 fields including up to 5 sub-buildings per parcel as YearBuilt1..5 etc.) lives in the single primary layer, so no join is needed. SD and OC are also single-layer.
 
 **Graceful degradation:** if the joined query fails (502, parse error, zero rows), the primary data still ships. The `[carbon-enrich] ARCGIS_*` logs surface the failure for debug without crashing the user flow.
+
+### Socrata-client pattern — SF DataSF (C.S.1.7.0d)
+
+The second supported county-data client. Some CA counties (and most major US municipalities) publish open data via the Socrata Open Data API instead of Esri ArcGIS REST. Same registry + same `normalizeCountyFeature` translator; different transport (`querySocrataDataset` instead of `queryFeatureService`). The dispatcher in `fetchCACounty` branches on `county.client`.
+
+**First wired user — San Francisco:**
+
+| Dataset | Status | Use |
+|---|---|---|
+| Assessor Historical Secured Property Tax Rolls (`wv5m-vpq2`) | Active, refreshed annually (latest `closed_roll_year='2024'`, rowsUpdatedAt 2025-09-25) | **Wired.** Single comprehensive source for every CRITICAL + USEFUL insurance field on every SF parcel back to 2007. `baseWhere` pins all queries to the latest year. |
+| Land Use 2020 (`us3s-fp9q`) | **ARCHIVED by DataSF** (rowsUpdatedAt 2023-10, schema returns 0 columns) | **NOT wired.** Brief assumed it was current; live probe revealed the dataset is shut down. Tax Rolls supersedes every field Land Use 2020 used to provide. Documented so future sprints don't re-discover the archival. |
+
+**Field availability matrix — SF Tax Rolls (live-probed per asset class):**
+
+| Field | SFR | MRES Multifamily | Commercial |
+|---|---|---|---|
+| use_code + use_definition | ✓ | ✓ | ✓ |
+| property_class_code_definition | ✓ | ✓ | ✓ |
+| year_property_built | ✓ | ✓ | ✓ (some) |
+| number_of_units | ✓ (always 1) | ✓ | ✓ (some) |
+| property_area (building sqft) | ✓ | ✓ | ✓ |
+| construction_type (coded letter A/B/C/D/S → mapped) | ✓ | ✓ | ✓ |
+| number_of_stories | ✓ | ✓ | ✓ (some) |
+| number_of_bedrooms / _bathrooms | ✓ | ✓ | ✗ |
+
+**Construction-type codes** (SF Assessor, ISO-aligned) — translated via `constructionTypeMap` on the registry entry so chat surfaces the human-readable string, not the single letter:
+
+| Code | Distribution (2024 rolls) | Meaning |
+|---|---|---|
+| D | 152,718 parcels | Wood Frame (Type V) |
+| NA | 47,265 | Unknown (per assessor) |
+| C | 5,417 | Heavy Timber / Masonry (Type III) |
+| A | 2,775 | Fire-Resistive (Type I) |
+| B | 2,481 | Non-Combustible (Type II) |
+| S | 483 | Steel Frame |
+
+**Where Socrata may be useful next:** NYC OpenData (PLUTO/MapPLUTO is on Socrata), Chicago Data Portal, Seattle GeoData, Maryland Property Records — all use the same SoQL API shape. Adding any of these = single registry entry + reusing `querySocrataDataset`.
 
 ## Per-conversation cost model (Carbon's chat as of C.S.1.6)
 
