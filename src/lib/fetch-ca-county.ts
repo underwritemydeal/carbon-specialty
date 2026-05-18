@@ -28,6 +28,7 @@ import type {
   CACountyTableJoinFields,
 } from "./ca-county-registry";
 import { findCACounty } from "./ca-county-registry";
+import { sanityCheckConstruction } from "./construction-sanity";
 import type {
   BuildingFacts,
   EnrichmentSource,
@@ -115,7 +116,12 @@ export async function fetchCACounty(
     }
   }
 
-  return out;
+  // C.S.1.7.0e — insurance-literate sanity check. Suppresses
+  // physically-impossible construction codes (e.g. 13-story wood
+  // frame in SF) before they reach the chat. Operates after the
+  // table-join merge so the final stories + construction_type pair
+  // is what gets evaluated.
+  return sanityCheckConstruction(out);
 }
 
 /* =========================================================================
@@ -152,7 +158,10 @@ async function fetchSocrataCounty(
   });
   if (!rows || rows.length === 0) return null;
 
-  return normalizeCountyFeature(rows[0], county);
+  const out = normalizeCountyFeature(rows[0], county);
+  // C.S.1.7.0e — sanity check (SF is the canonical target: 550
+  // California Street codes "D" / Wood Frame on a 13-story office).
+  return sanityCheckConstruction(out);
 }
 
 /* =========================================================================
