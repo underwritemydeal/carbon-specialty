@@ -43,7 +43,13 @@
 export type EnrichmentSource =
   | "geocoding"
   | "realie"
-  | "la-county"  // C.S.1.7.0a — LA County ArcGIS direct
+  // CA county-direct ArcGIS sources. C.S.1.7.0a added LA. C.S.1.7.0b
+  // added SD, Riverside, OC. Slugs match the `slug` field on each
+  // CACountyConfig entry in src/lib/ca-county-registry.ts.
+  | "la-county"
+  | "san-diego-county"
+  | "orange-county"
+  | "riverside-county"
   | "streetview";
 
 /* =========================================================================
