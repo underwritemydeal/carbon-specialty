@@ -385,23 +385,28 @@ export function Hero() {
           .hero-eyebrow .hero-eyebrow-right { margin-top: 6px; }
         }
 
-        /* C.S.1.6.2 — Mobile masthead polish at ≤480px.
-           - Eyebrow row tightens: padding-top + margin-top halved so
-             the status line sits at half the current vertical air below
-             "00 — GET A QUOTE".
-           - Hairline rule under the masthead switches to pine, 1px.
-           - The Carbon/status status line itself loses its 6px gap
-             above (was added at ≤600px) — already tight enough.
-           - Hamburger widens to a 44×44 tap target and pulls flush
-             to the right safe-area inset (so it sits at the screen
-             edge on notched devices). */
+        /* C.S.1.6.4 — Mobile masthead is wordmark + hamburger only.
+           The entire eyebrow row ("00 — GET A QUOTE" + status pulse +
+           hairline rule) is stripped at ≤480px. The previous C.S.1.6.2
+           pine-rule and tightened-padding rules on .hero-eyebrow are
+           preserved only as a fallback for the 481–600px range where
+           the eyebrow still renders. The status pulse only exists in
+           CarbonChat's header now; nothing page-level above the hero.
+
+           Hamburger keeps its 44×44 tap target + safe-area-inset
+           flush-right behavior from C.S.1.6.2.
+
+           Hero text dominates: section grows to 90vh, headline scales
+           to 64px display, breathing room maximized. */
         @media (max-width: 480px) {
-          .hero-eyebrow {
-            padding-top: 10px !important;
-            margin-top: 8px !important;
-            border-top: 1px solid var(--ember) !important;
+          .hero-eyebrow { display: none !important; }
+          .hero-fullbleed { height: 90vh !important; min-height: 560px !important; }
+          .hero-h1 {
+            font-size: 64px !important;
+            line-height: 1.05 !important;
+            max-width: 100% !important;
+            padding-bottom: 8vh !important;
           }
-          .hero-eyebrow .hero-eyebrow-right { margin-top: 3px !important; }
           .hero-hamburger {
             width: 44px !important;
             height: 44px !important;
