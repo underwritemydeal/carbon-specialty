@@ -405,11 +405,20 @@ export function normalizeCountyFeature(
   // C.S.1.7.0d — when a `constructionTypeMap` is registered (SF uses
   // single-letter codes D/A/B/C/S → human-readable strings), the raw
   // code is translated first.
+  // C.S.1.7.0f — when `constructionCodeKeyExtractor === "firstChar"`,
+  // the raw code's leading character is the lookup key (LA's
+  // QualityClass1 publishes composites like "D6B"/"AX" where the IBC
+  // class is the leading letter and the trailing chars are quality
+  // grade).
   const ctParts: string[] = [];
   if (f.constructionType) {
     const v = readString(attrs, f.constructionType);
     if (v) {
-      const mapped = f.constructionTypeMap?.[v];
+      const key =
+        f.constructionCodeKeyExtractor === "firstChar"
+          ? v.charAt(0).toUpperCase()
+          : v;
+      const mapped = f.constructionTypeMap?.[key];
       ctParts.push(mapped ?? v);
     }
   }

@@ -132,7 +132,9 @@ describe("normalizeCountyFeature — LA County full record", () => {
     expect(out.building?.year_built).toBe(1953);
     expect(out.building?.units).toBe(10);
     expect(out.building?.building_sqft).toBe(7564);
-    expect(out.building?.construction_type).toBe("0500 · quality C");
+    // C.S.1.7.0f — LA now reads construction from QualityClass1's
+    // leading letter via the IBC map. QualityClass1="C" → Heavy Timber.
+    expect(out.building?.construction_type).toBe("Heavy Timber / Masonry (Type III)");
     // Building group — USEFUL fields (C.S.1.7.0b)
     expect(out.building?.effective_year_built).toBe(1998); // NEW
     expect(out.building?.bedrooms).toBe(12);
@@ -157,7 +159,7 @@ describe("normalizeCountyFeature — LA County full record", () => {
     expect(out.units).toBe(10);
     expect(out.land_use_code).toBe("0500");
     expect(out.land_use_desc).toBe("Five or more apartments");
-    expect(out.construction_type).toBe("0500 · quality C");
+    expect(out.construction_type).toBe("Heavy Timber / Masonry (Type III)");
     // @ts-expect-error — lot_size_sqft removed from flat fields in C.S.1.7.0b
     expect(out.lot_size_sqft).toBeUndefined();
     // Owner of record stays undefined (LA doesn't publish)
@@ -202,7 +204,9 @@ describe("normalizeCountyFeature — LA County full record", () => {
       EffectiveYear1: "1500", // out of range
       Units1: 0,
       SQFTmain1: 0,
-      DesignType1: "   ", // blank after trim
+      // C.S.1.7.0f — construction now reads QualityClass1, not
+      // DesignType1. Blank QualityClass1 → no construction.
+      QualityClass1: "   ",
     };
     const out = normalizeCountyFeature(garbage, LA_COUNTY);
     expect(out.year_built).toBeUndefined();
@@ -210,6 +214,126 @@ describe("normalizeCountyFeature — LA County full record", () => {
     expect(out.units).toBeUndefined();
     expect(out.square_feet).toBeUndefined();
     expect(out.construction_type).toBeUndefined();
+  });
+});
+
+/* =========================================================================
+ * LA County — QualityClass1 → IBC construction map (C.S.1.7.0f)
+ * =========================================================================
+ *
+ * LA's QualityClass1 publishes composites like "D6B"/"AX"/"C45" where
+ * the LEADING letter is the IBC class (D/C/B/A/S) and the trailing
+ * digits/letter are the quality grade. The registry's
+ * constructionCodeKeyExtractor: "firstChar" + constructionTypeMap
+ * combination translates the leading letter to the human-readable
+ * IBC type string. Verified across the 2.17M-parcel LA roll:
+ *   D = 2.06M parcels — Wood Frame (Type V)
+ *   C = 68K            — Heavy Timber / Masonry (Type III)
+ *   A = 12K            — Fire-Resistive (Type I)
+ *   B = 9K             — Non-Combustible (Type II)
+ *   S = 7K             — Steel Frame
+ *
+ * Verified per-building on live LA records:
+ *   1247 Pine Ave Long Beach (1921 4-unit) → QualityClass1="C45"
+ *     → Heavy Timber / Masonry (Type III)
+ *   US Bank Tower 633 W 5th (1988 73-story skyscraper)
+ *     → QualityClass1="AX" → Fire-Resistive (Type I)
+ * ========================================================================= */
+
+describe("normalizeCountyFeature — LA construction map (C.S.1.7.0f)", () => {
+  it("maps QualityClass1='D6B' to Wood Frame (Type V) via firstChar extractor", () => {
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "D6B" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Wood Frame (Type V)");
+    expect(out.construction_type).toBe("Wood Frame (Type V)");
+  });
+
+  it("maps QualityClass1='C45' to Heavy Timber / Masonry (1247 Pine case)", () => {
+    const out = normalizeCountyFeature(
+      { APN: "7273-004-015", QualityClass1: "C45  " },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Heavy Timber / Masonry (Type III)");
+  });
+
+  it("maps QualityClass1='AX' to Fire-Resistive (US Bank Tower case)", () => {
+    const out = normalizeCountyFeature(
+      { APN: "5151-017-028", QualityClass1: "AX   " },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Fire-Resistive (Type I)");
+  });
+
+  it("maps QualityClass1='B7C' to Non-Combustible (Type II)", () => {
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "B7C" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Non-Combustible (Type II)");
+  });
+
+  it("maps QualityClass1='S7' to Steel Frame", () => {
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "S7" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Steel Frame");
+  });
+
+  it("normalizes leading character case-insensitively (lowercase 'd' → Wood Frame)", () => {
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "d6b" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Wood Frame (Type V)");
+  });
+
+  it("passes through unrecognized leading characters verbatim (LA garbage values)", () => {
+    // ~2K parcels in LA's roll have leading digits/U/L/M/O — these
+    // aren't IBC codes, so they fall through the map unchanged.
+    // Sanity check ignores them at any height (no recognizable IBC marker).
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "U6B" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("U6B");
+  });
+
+  it("does NOT append DesignType1 to the construction string (it's a use code, not construction)", () => {
+    // Even if DesignType1 is set, the registry no longer reads it as
+    // construction. construction_type comes from QualityClass1 only.
+    const out = normalizeCountyFeature(
+      { APN: "X", DesignType1: "0500", QualityClass1: "D6B" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Wood Frame (Type V)");
+    expect(out.building?.construction_type).not.toContain("0500");
+  });
+});
+
+describe("fetchCACounty — C.S.1.7.0e sanity check fires on LA Wood Frame at 13 stories (C.S.1.7.0f integration)", () => {
+  it("suppresses construction + sets flag for a synthetic 13-story LA building coded QualityClass1='D6B'", async () => {
+    // Synthetic — LA doesn't actually publish stories, so for the
+    // sanity check to fire on an LA record the stories field would
+    // need to come from a future joined source. This test verifies
+    // the wiring: if the merged record DID carry stories=13 with the
+    // newly-mapped "Wood Frame (Type V)", Rule 1 would trip.
+    const out = normalizeCountyFeature(
+      { APN: "X", QualityClass1: "D6B" },
+      LA_COUNTY,
+    );
+    expect(out.building?.construction_type).toBe("Wood Frame (Type V)");
+    // Force-inject stories so we can verify the sanity check path
+    // would fire on the mapped value.
+    if (out.building) out.building.stories = 13;
+    // Apply the same sanity-check function fetchCACounty calls.
+    const { sanityCheckConstruction } = await import("./construction-sanity");
+    sanityCheckConstruction(out);
+    expect(out.building?.construction_type).toBeUndefined();
+    expect(out.construction_type).toBeUndefined();
+    expect(out.building?.constructionTypeFlag).toBe("unreliable_county_data");
   });
 });
 
