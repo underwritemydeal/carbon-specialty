@@ -7,6 +7,7 @@ const COLOPHON = {
     "California-based real estate specialty. Selective placements available nationally through wholesale and program partners.",
   services: [
     { label: "What we write", href: "/what-we-write" },
+    { label: "Coverage", href: "/coverage" },
     { label: "How it works", href: "/how-it-works" },
     { label: "Get a quote", href: "/quote" },
   ],
