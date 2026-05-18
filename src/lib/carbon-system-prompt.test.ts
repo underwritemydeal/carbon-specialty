@@ -53,6 +53,52 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — hallucination guardrail", () => {
       "is that the property you meant?",
     );
   });
+});
+
+describe("CARBON_INTAKE_SYSTEM_PROMPT — C.S.1.7.0h typo-confirmation tightening", () => {
+  it("names Google's silent typo correction as the failure mode being guarded", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("silently corrects typos");
+  });
+
+  it("references the production report fingerprint (Stanion → Stanyan)", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Stanion");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Stanyan");
+  });
+
+  it("explicitly lists street-letters-changed as a confirmation trigger", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "The street name itself was modified",
+    );
+  });
+
+  it("lists city/state/ZIP change as a confirmation trigger", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "The city, state, or ZIP was changed",
+    );
+  });
+
+  it("lists street-number snap as a confirmation trigger", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "The street NUMBER was changed",
+    );
+  });
+
+  it("requires confirmation BEFORE stating any other facts (not after)", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(
+      /MUST ask for confirmation BEFORE stating any other property facts/,
+    );
+  });
+
+  it("explicitly exempts pure normalization (capitalization, suffix, ZIP additions) from confirmation", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("pure normalization");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "do NOT require confirmation",
+    );
+  });
+
+  it("closes with 'when in doubt: confirm' to bias the model toward asking", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("When in doubt: confirm");
+  });
 
   it("preserves the wrap-up sentinel for the client-side extraction trigger", () => {
     // Defensive: the hallucination guardrail block was inserted
