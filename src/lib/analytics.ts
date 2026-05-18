@@ -10,6 +10,7 @@ export type CSEvent =
   | "cs_chat_user_message"
   | "cs_chat_intake_completed"
   | "cs_chat_fallback_mode"
+  | "cs_chat_place_selected"
   | "cs_form_step_submitted"
   | "cs_form_completed"
   | "cs_phone_clicked"
