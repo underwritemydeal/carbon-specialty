@@ -109,7 +109,11 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
     const countyFacts = await fetchCACounty(geo.lat, geo.lng, geo.county);
     if (countyFacts) {
       Object.assign(facts, countyFacts);
-      succeeded.push("la-county");
+      // C.S.1.7.0b — source tag comes from the registry's slug per
+      // county (was hardcoded "la-county" in C.S.1.7.0a). Falls back
+      // to "la-county" only if a registry entry forgets to set
+      // source_tag — unreachable in practice but type-narrowed here.
+      succeeded.push(countyFacts.source_tag ?? "la-county");
       countyDirectHit = true;
     }
     // No failed.push here yet — we'll only mark the county-direct path

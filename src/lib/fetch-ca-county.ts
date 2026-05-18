@@ -26,6 +26,7 @@ import type { CACountyConfig } from "./ca-county-registry";
 import { findCACounty } from "./ca-county-registry";
 import type {
   BuildingFacts,
+  EnrichmentSource,
   OwnerFacts,
   PropertyFacts,
   TransactionFacts,
@@ -103,7 +104,11 @@ export function normalizeCountyFeature(
   county: CACountyConfig,
 ): CACountyFacts {
   const f = county.fields;
-  const out: CACountyFacts = { source_tag: "la-county" };
+  // C.S.1.7.0b — source_tag is now driven by the registry's `slug`
+  // (was hardcoded "la-county" in C.S.1.7.0a). Adding a county no
+  // longer touches fetch-ca-county.ts; the registry slug becomes the
+  // source tag automatically.
+  const out: CACountyFacts = { source_tag: county.slug as EnrichmentSource };
 
   // ---- Building ---------------------------------------------------------
   const building: BuildingFacts = {};

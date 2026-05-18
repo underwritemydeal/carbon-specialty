@@ -165,8 +165,213 @@ export const LA_COUNTY: CACountyConfig = {
   },
 };
 
+/* =========================================================================
+ * San Diego County (added C.S.1.7.0b)
+ * =========================================================================
+ *
+ * Layer: SANDAG Hosted Parcels FeatureServer
+ *   https://geo.sandag.org/server/rest/services/Hosted/Parcels/FeatureServer/0
+ *
+ * SANDAG (San Diego Association of Governments) re-publishes the
+ * County Assessor's Master Property Record + Parcel Assessment
+ * Record as a single rich Feature Layer — 56 fields. Schema verified
+ * via /?f=json + live geometry query against downtown SD (downtown
+ * Broadway returned APN 5335730100, total_lvg_area 24,807 sqft,
+ * asr_total $3.34M).
+ *
+ * Use codes: `nucleus_use_cd` is a 3-digit string code; the published
+ * domain has 225 entries. We don't inline the full table — only what
+ * we've confirmed shape-wise. Unmapped codes fall through to
+ * "Use code XXX" via the normalizer's default. The map can grow over
+ * time as Carbon sees real records.
+ *
+ * Owner-data: ownerocc field carries an owner-occupied indicator
+ * ("Y"/"N"). Owner name + mailing address are NOT published — same
+ * privacy gap as LA County. Future owner-data sprint addresses this
+ * via a separate source.
+ *
+ * Sentinel values to filter: SANDAG uses "000" for missing bedroom /
+ * bathroom counts and "00" for missing year_effective. The
+ * normalizer's existing readNumber + > 0 + year-range guards handle
+ * these correctly.
+ * ========================================================================= */
+export const SAN_DIEGO_COUNTY: CACountyConfig = {
+  slug: "san-diego-county",
+  county: "San Diego County",
+  state: "CA",
+  client: "arcgis",
+  featureServiceUrl:
+    "https://geo.sandag.org/server/rest/services/Hosted/Parcels/FeatureServer/0",
+  defaultRadiusMeters: 50,
+  fields: {
+    // Building
+    useCode: "nucleus_use_cd",
+    useCodeMap: {
+      // Common SanGIS nucleus_use_cd codes — minimal pass-through map.
+      // Sourced from observed records + SanGIS documentation. Unmapped
+      // codes fall through to "Use code XXX" so Carbon's prompt can
+      // still confirm the raw code with the user.
+      "110": "Single Family Residential",
+      "120": "Mobile Home",
+      "130": "Townhome / Condo",
+      "210": "Apartments",
+      "300": "Commercial",
+      "400": "Office",
+      "500": "Industrial",
+      "700": "Agricultural",
+      "800": "Vacant",
+    },
+    yearBuilt: "year_effective",
+    buildingSqft: "total_lvg_area",
+    lotSqft: "SHAPE__Area",
+    units: "unitqty",
+    bedrooms: "bedrooms",
+    bathrooms: "baths",
+    // No constructionType — SD doesn't publish a frame/quality field
+
+    // Owner — name/mailing unpublished per the CA privacy gap.
+    // ownerocc is a "Y"/"N" string indicator; we map it via
+    // homeownerExemptionField semantically (non-empty = inferred).
+    // No dedicated handler, so leave undefined for now.
+    ownerName: undefined,
+    mailingAddress: undefined,
+    // No homeownerExemptionField — SD's ownerocc is a string flag we
+    // don't have a readNumber path for. Leave the owner section sparse.
+
+    // Transaction
+    // SD already sums land + improvements into asr_total — use it.
+    assessedValueField: "asr_total",
+    // No lastSaleDate / lastSalePrice published in this layer.
+
+    // Parcel identifier
+    parcelId: "apn",
+  },
+};
+
+/* =========================================================================
+ * Orange County (added C.S.1.7.0b)
+ * =========================================================================
+ *
+ * Layer: OC Public Works LegalLotsAttributeOpenData FeatureServer
+ *   https://ocgis.com/arcpub/rest/services/LegalLotsAttributeOpenData/FeatureServer/0
+ *
+ * 27 fields. Decent coverage — has GPLU code + GPLU description
+ * paired (so no inline use-code map needed), MailAddress, LandVal +
+ * ImprovedVal. Notably absent: year_built, building_sqft, units,
+ * bedrooms (those live in a different OC layer or aren't published
+ * at all on the open-data side). For chat enrichment Carbon still
+ * gets: address, use desc, lot area, assessed value, owner mailing.
+ *
+ * Live verification: queried downtown Santa Ana (SiteAddress "104 E
+ * 1ST ST", LandVal 583,821, ImprovedVal 708,216).
+ * ========================================================================= */
+export const ORANGE_COUNTY: CACountyConfig = {
+  slug: "orange-county",
+  county: "Orange County",
+  state: "CA",
+  client: "arcgis",
+  featureServiceUrl:
+    "https://ocgis.com/arcpub/rest/services/LegalLotsAttributeOpenData/FeatureServer/0",
+  defaultRadiusMeters: 50,
+  fields: {
+    address: "SiteAddress",
+
+    // Building
+    useCode: "GPLU_CODE",
+    useDescField: "GPLU_DESC",
+    lotSqft: "Shape__Area",
+    // No yearBuilt, buildingSqft, units, bedrooms, bathrooms,
+    // constructionType — not published on this layer.
+
+    // Owner — OC publishes mailing address; name still unpublished.
+    mailingAddress: "MailAddress",
+
+    // Transaction
+    assessedLandValueField: "LandVal",
+    assessedImpValueField: "ImprovedVal",
+
+    // Parcel identifier
+    parcelId: "AssessmentNo",
+  },
+};
+
+/* =========================================================================
+ * Riverside County (added C.S.1.7.0b)
+ * =========================================================================
+ *
+ * Layer: Riverside County PARCELS_CREST (Assessor MapServer/50)
+ *   https://gis.countyofriverside.us/arcgis_mapping/rest/services/OpenData/Assessor/MapServer/50
+ *
+ * 34 fields. PARCELS_CREST is one of two parcel-layer options:
+ *
+ *   - layer 40 (PARCELS): geometry + APN only. Skip.
+ *   - layer 50 (PARCELS_CREST): geometry + 33 attribute fields. Use.
+ *
+ * The richer parcel facts (year_built, building_sqft, unit count,
+ * bedrooms, bathrooms) live in a separate CREST_PROPERTY_CHAR TABLE
+ * (id 80) that would need a second APN-join query. That's beyond
+ * this single-query registry's scope — a future sprint can extend
+ * CACountyConfig with an `assessorTableJoinUrl` field if Carbon
+ * needs the joined attributes.
+ *
+ * Two notable wins for Riverside vs LA:
+ *   - CLASS_CODE is already human-readable ("Bank", "Single",
+ *     "Apartments") instead of a numeric code. Maps directly to
+ *     land_use_desc via the useDescField mechanism.
+ *   - MAIL_STREET + MAIL_CITY publish owner mailing address (rare
+ *     for CA). MAIL_CITY encodes "PALM DESERT CA 92260" — city,
+ *     state, and zip combined into one field, so we can't split
+ *     them cleanly into mailing_city + mailing_state + mailing_zip.
+ *     For now MAIL_CITY goes to mailing_city verbatim; downstream
+ *     consumers see the combined string.
+ *
+ * Live verification: queried 6570 Magnolia Ave Riverside (CLASS_CODE
+ * "Bank", LAND $757K, STRUCTURES $4.26M).
+ * ========================================================================= */
+export const RIVERSIDE_COUNTY: CACountyConfig = {
+  slug: "riverside-county",
+  county: "Riverside County",
+  state: "CA",
+  client: "arcgis",
+  featureServiceUrl:
+    "https://gis.countyofriverside.us/arcgis_mapping/rest/services/OpenData/Assessor/MapServer/50",
+  defaultRadiusMeters: 50,
+  fields: {
+    address: "SITUS_STREET",
+
+    // Building
+    // Riverside's CLASS_CODE is a string like "Bank" or "Apartments"
+    // — already human-readable. Map directly to land_use_desc via
+    // the useDescField mechanism. land_use_code stays undefined.
+    useDescField: "CLASS_CODE",
+    lotSqft: "SHAPE.STArea()",
+    // No yearBuilt / buildingSqft / units / bedrooms / bathrooms /
+    // constructionType — those live in the joined CREST_PROPERTY_CHAR
+    // table that this single-query path doesn't reach.
+
+    // Owner — Riverside is the first CA county to publish mailing
+    // address via public ArcGIS. ownerName still unpublished (would
+    // require the separate CREST_GENERAL table).
+    mailingAddress: "MAIL_STREET",
+    mailingCity: "MAIL_CITY", // encodes "city state zip" combined; see header
+
+    // Transaction — Riverside splits assessed value into LAND +
+    // STRUCTURES. Normalizer sums them.
+    assessedLandValueField: "LAND",
+    assessedImpValueField: "STRUCTURES",
+
+    // Parcel identifier
+    parcelId: "APN",
+  },
+};
+
 /** All registered CA counties. Subsequent sprints append here. */
-export const CA_COUNTIES: ReadonlyArray<CACountyConfig> = [LA_COUNTY];
+export const CA_COUNTIES: ReadonlyArray<CACountyConfig> = [
+  LA_COUNTY,
+  SAN_DIEGO_COUNTY,
+  ORANGE_COUNTY,
+  RIVERSIDE_COUNTY,
+];
 
 /** Lookup by county name. Accepts forms with/without "County" suffix
  *  (Google Geocoding's `administrative_area_level_2` returns
