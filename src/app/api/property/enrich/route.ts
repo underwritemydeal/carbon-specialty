@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  *
  * Composes three upstreams:
  *   1. Google Geocoding API     → canonical address + lat/lng
- *   2. Regrid Parcel API        → parcel facts (units, year built, sqft …)
+ *   2. Realie Property Data API → parcel facts (year built, sqft, useCode …)
  *   3. Google Street View URL   → just a URL string, no fetch
  *
  * Both real upstream fetches use Next.js' data cache with a 30-day
@@ -23,7 +23,7 @@ export const runtime = "nodejs";
  * returns data, the route returns 200 with whatever it could gather.
  * Only when *every* source fails does the route return 502.
  *
- * Missing env vars (REGRID_API_TOKEN / GOOGLE_MAPS_API_KEY) are
+ * Missing env vars (REALIE_API_TOKEN / GOOGLE_MAPS_API_KEY) are
  * treated as "this source unavailable" — the route still returns 200
  * with the relevant source listed under `sources_failed`. This is the
  * graceful-degradation rule from the sprint brief: callers (the chat
@@ -72,9 +72,10 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
   };
 
   // ---- Geocoding ----------------------------------------------------------
+  let geo: GeocodingResult | null = null;
   const googleKey = process.env.GOOGLE_MAPS_API_KEY;
   if (googleKey) {
-    const geo = await fetchGeocoding(address, googleKey);
+    geo = await fetchGeocoding(address, googleKey);
     if (geo) {
       facts.canonical_address = geo.canonical_address;
       facts.lat = geo.lat;
@@ -87,28 +88,36 @@ export async function enrichAddress(address: string): Promise<PropertyFacts> {
     failed.push("geocoding");
   }
 
-  // ---- Regrid -------------------------------------------------------------
-  // C.S.1.6.7 — Switched from address-based lookup
-  // (`/api/v2/parcels/address?query=...`) to lat-lon point lookup
-  // (`/api/v2/parcels/point?lat=...&lon=...`). The address endpoint
-  // was returning 200 OK with empty features for every prod address
-  // tested in C.S.1.6.6 (diagnosed via REGRID_EMPTY logging). Regrid
-  // documents the point endpoint as the more reliable path when an
-  // upstream geocoder is available — which Carbon has via Google
-  // Geocoding earlier in this composer. We only attempt Regrid when
-  // geocoding succeeded; otherwise mark regrid as failed since we
-  // have no point to look up.
-  const regridToken = process.env.REGRID_API_TOKEN;
-  if (regridToken && typeof facts.lat === "number" && typeof facts.lng === "number") {
-    const regrid = await fetchRegrid(facts.lat, facts.lng, regridToken);
-    if (regrid) {
-      Object.assign(facts, regrid);
-      succeeded.push("regrid");
+  // ---- Realie -------------------------------------------------------------
+  // C.S.1.6.8 — Replaced Regrid with Realie. Regrid Self-Serve started
+  // at ~$500/mo and didn't fit Carbon's ~25–200 quotes/month early-
+  // stage volume; Realie's free tier (25 req/mo + $0.15/overage) does.
+  // Realie's Address Lookup is the simplest match for our use case:
+  //   GET https://app.realie.ai/api/public/property/address/
+  //       ?state=<XX>&address=<street line 1>[&city=&county=]
+  //   Authorization: <api-key>           (raw key, no Bearer prefix)
+  //
+  // The endpoint requires structured `state` + `address` (street line
+  // 1 only) as separate query params, not a single concatenated
+  // string — so we still depend on Google Geocoding completing first
+  // to parse the address_components into street/state/city/county.
+  // Without geocoding we can't reliably call Realie, so we skip it.
+  const realieToken = process.env.REALIE_API_TOKEN;
+  if (realieToken && geo?.street_line && geo?.state) {
+    const realie = await fetchRealie(
+      geo.street_line,
+      geo.state,
+      realieToken,
+      { city: geo.city, county: geo.county },
+    );
+    if (realie) {
+      Object.assign(facts, realie);
+      succeeded.push("realie");
     } else {
-      failed.push("regrid");
+      failed.push("realie");
     }
   } else {
-    failed.push("regrid");
+    failed.push("realie");
   }
 
   // ---- Street View URL (synthetic) ----------------------------------------
@@ -131,13 +140,29 @@ type GeocodingResult = {
   canonical_address: string;
   lat: number;
   lng: number;
+  /** C.S.1.6.8 — structured address components from
+   *  Google's `address_components` array. Required to call Realie's
+   *  Address Lookup, which takes `state` + `address` (street line 1)
+   *  as separate query params, not a single concatenated string. */
+  street_line?: string;
+  city?: string;
+  state?: string;
+  county?: string;
+  postal_code?: string;
 };
+
+interface GeocodingAddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
 
 interface GeocodingResponse {
   status: string;
   results: Array<{
     formatted_address: string;
     geometry?: { location?: { lat: number; lng: number } };
+    address_components?: GeocodingAddressComponent[];
   }>;
 }
 
@@ -154,10 +179,24 @@ export async function fetchGeocoding(
     const top = data.results[0];
     const loc = top.geometry?.location;
     if (!loc) return null;
+
+    const components = top.address_components ?? [];
+    const findComponent = (type: string, key: "short_name" | "long_name" = "long_name") =>
+      components.find((c) => c.types.includes(type))?.[key];
+
+    const streetNumber = findComponent("street_number");
+    const route = findComponent("route");
+    const street_line = [streetNumber, route].filter(Boolean).join(" ") || undefined;
+
     return {
       canonical_address: top.formatted_address,
       lat: loc.lat,
       lng: loc.lng,
+      street_line,
+      city: findComponent("locality") ?? findComponent("sublocality"),
+      state: findComponent("administrative_area_level_1", "short_name"),
+      county: findComponent("administrative_area_level_2"),
+      postal_code: findComponent("postal_code"),
     };
   } catch {
     return null;
@@ -165,10 +204,10 @@ export async function fetchGeocoding(
 }
 
 /* =========================================================================
- * Regrid Parcel API
+ * Realie Property Data API (C.S.1.6.8 — replaced Regrid)
  * ========================================================================= */
 
-type RegridFacts = Partial<
+type RealieFacts = Partial<
   Pick<
     PropertyFacts,
     | "units"
@@ -183,63 +222,99 @@ type RegridFacts = Partial<
   >
 >;
 
-interface RegridResponse {
-  parcels?: {
-    features?: Array<{
-      properties?: {
-        fields?: Record<string, unknown>;
-      };
-    }>;
-  };
+/** Realie returns the property facts under a single `property` object
+ *  with all features at the top level (e.g. `property.yearBuilt`).
+ *  Unknown fields are common — coverage varies by jurisdiction. We
+ *  treat the whole object as Record<string, unknown> and let the
+ *  normalizer cherry-pick. */
+interface RealieResponse {
+  property?: Record<string, unknown>;
 }
 
 const ACRES_TO_SQFT = 43560;
 
-/** Default search radius (meters) around the geocoded point.
- *
- *  Started at 50m on the assumption a geocoded point would land
- *  inside the building's parcel polygon. C.S.1.6.7 prod probes
- *  returned REGRID_EMPTY for all three test addresses at 50m, so
- *  widened to 1000m. Google often returns a street-midpoint or
- *  driveway-edge centroid for residential addresses, which can be
- *  meaningfully off the parcel polygon; 1000m gives a 1km buffer
- *  and we still take limit=1, so we get the nearest parcel
- *  regardless. False-positive risk is low — even at 1000m, the
- *  nearest-by-distance parcel is essentially always the right one
- *  for a residential or small commercial address. */
-export const REGRID_DEFAULT_RADIUS_M = 1000;
+/** useCode → land_use_desc map. Realie's `useCode` is a 4-digit
+ *  numeric string; the docs publish the canonical description for
+ *  each code but the API doesn't return the description alongside the
+ *  code. We inline the codes Carbon is most likely to see, grouped
+ *  by asset class, so the C.S.1.6.6 enrichment-lead prompt has a
+ *  human-readable string to lead with. Unmapped codes fall through
+ *  to `Use code <code>` so Carbon can still confirm in dialog. */
+const REALIE_USE_CODE_DESC: Record<string, string> = {
+  // Residential — single unit
+  "1001": "Single Family Residential",
+  "1004": "Condominium Unit",
+  "1006": "Mobile/Manufactured Home",
+  // Residential — multi unit
+  "1100": "Multifamily Residential",
+  "1101": "Duplex (2 Units)",
+  "1104": "Apartment House (5+ Units)",
+  "1110": "Multifamily Dwellings",
+  // Commercial
+  "2000": "Commercial",
+  "2001": "Retail Store",
+  "2003": "Store/Office (Mixed Use)",
+  "2012": "Restaurant",
+  "2042": "Retail/Residential (Mixed Use)",
+  // Office
+  "3000": "Commercial Office",
+  "3003": "Office Building",
+  "3010": "Commercial/Industrial (Mixed Use)",
+  // Industrial
+  "5000": "Industrial",
+  "6000": "Heavy Industrial",
+  // Vacant / under construction
+  "8000": "Vacant Land",
+  "8014": "Under Construction",
+  // General / fallback
+  "0010": "Miscellaneous",
+};
 
 /**
- * Regrid Parcel API — lat/lon point lookup.
+ * Realie Property Data API — Address Lookup.
  *
- *   GET https://app.regrid.com/api/v2/parcels/point
- *     ?lat=<lat>&lon=<lon>&radius=<meters>&limit=1&token=<token>
+ *   GET https://app.realie.ai/api/public/property/address/
+ *     ?state=<XX>&address=<street line 1>[&city=&county=]
+ *   Authorization: <api-key>    (raw key, NO "Bearer " prefix)
  *
- * Switched from the address-based endpoint in C.S.1.6.7. The address
- * endpoint (`/api/v2/parcels/address?query=...`) was returning 200 OK
- * with empty features for every prod address tested — diagnosed via
- * the REGRID_EMPTY logging added in PR #18. Regrid documents the
- * point endpoint as the more reliable path when an upstream
- * geocoder is available; Carbon has lat/lng from Google Geocoding
- * earlier in this composer, so we thread it through here.
+ * Source (verified pre-swap):
+ *   https://docs.realie.ai/api-reference/property/address-lookup
  *
- * Response shape is identical to the address endpoint
- * (`{ parcels: { features: [...] } }`), so the normalizer and the
- * RegridResponse type stay unchanged.
+ * Realie requires `state` + `address` as separate query params,
+ * where `address` is street line 1 only ("1418 E Edgemont Ave"),
+ * NOT a concatenated string. Caller is responsible for parsing
+ * those out — in practice, from Google Geocoding's
+ * `address_components` earlier in this composer. `city` + `county`
+ * are optional but must be paired (city requires county per
+ * Realie's spec).
  *
- * Diagnostic logging from PR #18 is preserved at all three failure
- * branches. The token is REDACTED from logged URLs.
+ * Diagnostic logging follows the same `[carbon-enrich]` prefix
+ * pattern Regrid carried before this swap — REALIE_NON_OK,
+ * REALIE_EMPTY (200 with no property object), REALIE_PARSE_FAIL,
+ * REALIE_THROW. Token is REDACTED from logged URLs.
  */
-export async function fetchRegrid(
-  lat: number,
-  lon: number,
+export async function fetchRealie(
+  street_line: string,
+  state: string,
   token: string,
-  radiusMeters: number = REGRID_DEFAULT_RADIUS_M,
-): Promise<RegridFacts | null> {
-  const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lon}&radius=${radiusMeters}&limit=1&token=${token}`;
-  const redactedUrl = url.replace(token, "REDACTED");
+  optional: { city?: string; county?: string } = {},
+): Promise<RealieFacts | null> {
+  const params = new URLSearchParams({
+    state,
+    address: street_line,
+  });
+  // `city` is only accepted alongside `county` per Realie's spec.
+  // Send both or neither.
+  if (optional.city && optional.county) {
+    params.set("city", optional.city);
+    params.set("county", optional.county);
+  }
+  const url = `https://app.realie.ai/api/public/property/address/?${params.toString()}`;
   try {
-    const res = await fetch(url, { next: { revalidate: 2592000 } });
+    const res = await fetch(url, {
+      headers: { Authorization: token },
+      next: { revalidate: 2592000 },
+    });
     if (!res.ok) {
       let bodyPreview = "";
       try {
@@ -248,39 +323,33 @@ export async function fetchRegrid(
         // ignore
       }
       console.warn(
-        `[carbon-enrich] REGRID_NON_OK status=${res.status} url=${redactedUrl} body=${bodyPreview}`,
+        `[carbon-enrich] REALIE_NON_OK status=${res.status} url=${url} body=${bodyPreview}`,
       );
       return null;
     }
-    // Read once as text so we can both parse the JSON and log a
-    // body preview on REGRID_EMPTY. Without this, the empty-features
-    // case had no signal beyond `features=0`, and we couldn't tell
-    // whether Regrid was emitting a "no coverage" body, an account-
-    // scoped warning, or a quirky shape.
     const rawBody = await res.text();
-    let data: RegridResponse;
+    let data: RealieResponse;
     try {
-      data = JSON.parse(rawBody) as RegridResponse;
+      data = JSON.parse(rawBody) as RealieResponse;
     } catch (e) {
       console.warn(
-        `[carbon-enrich] REGRID_PARSE_FAIL lat=${lat} lon=${lon} body=${rawBody.slice(0, 200)} err=${
+        `[carbon-enrich] REALIE_PARSE_FAIL state=${state} address=${street_line.slice(0, 80)} body=${rawBody.slice(0, 200)} err=${
           e instanceof Error ? e.message : String(e)
         }`,
       );
       return null;
     }
-    const fields = data.parcels?.features?.[0]?.properties?.fields;
-    if (!fields) {
-      const featuresLen = data.parcels?.features?.length ?? 0;
+    const property = data.property;
+    if (!property || typeof property !== "object") {
       console.warn(
-        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} lat=${lat} lon=${lon} radius=${radiusMeters} body=${rawBody.slice(0, 300)}`,
+        `[carbon-enrich] REALIE_EMPTY state=${state} address=${street_line.slice(0, 80)} body=${rawBody.slice(0, 300)}`,
       );
       return null;
     }
-    return normalizeRegridFields(fields);
+    return normalizeRealieFields(property);
   } catch (e) {
     console.warn(
-      `[carbon-enrich] REGRID_THROW lat=${lat} lon=${lon} err=${
+      `[carbon-enrich] REALIE_THROW state=${state} address=${street_line.slice(0, 80)} err=${
         e instanceof Error ? e.message : String(e)
       }`,
     );
@@ -288,54 +357,55 @@ export async function fetchRegrid(
   }
 }
 
-/** Defensive translation from Regrid's wide schema to our small one. */
-export function normalizeRegridFields(fields: Record<string, unknown>): RegridFacts {
-  const out: RegridFacts = {};
+/** Translate Realie's flat `property` object into our PropertyFacts
+ *  subset. Fields documented at
+ *  https://docs.realie.ai/api-reference/property-data-schema
+ *  Notes:
+ *  - `landArea` is already in square feet (different from Regrid's
+ *    acres). Convert from `acres` only as a fallback.
+ *  - `useCode` is a numeric string code; the mapping to a human-
+ *    readable description is published in Realie's docs but NOT
+ *    returned by the API. We inline the most-relevant subset
+ *    above (REALIE_USE_CODE_DESC). Unmapped codes fall through.
+ *  - Realie does not document a discrete unit-count field; if the
+ *    operator confirms one exists at the feature level, fill it in
+ *    here. For now we leave `units` unmapped and let Carbon's prompt
+ *    derive multifamily-ness from the use code description.
+ */
+export function normalizeRealieFields(property: Record<string, unknown>): RealieFacts {
+  const out: RealieFacts = {};
 
-  const yearBuilt = toNumber(fields.yearbuilt);
+  const yearBuilt = toNumber(property.yearBuilt);
   if (yearBuilt && yearBuilt > 1700 && yearBuilt < 2100) out.year_built = yearBuilt;
 
-  // Unit count — Regrid uses `numunits` on residential parcels; fall back
-  // to `units` (some datasets) or `numresunit`.
-  const units =
-    toNumber(fields.numunits) ??
-    toNumber(fields.units) ??
-    toNumber(fields.numresunit);
-  if (units && units > 0) out.units = units;
-
-  // Square footage — building square footage. Regrid normalizes to
-  // `bldg_sqft`; some datasets surface `sqft` or `improvval_sqft`.
-  const sqft =
-    toNumber(fields.bldg_sqft) ??
-    toNumber(fields.sqft) ??
-    toNumber(fields.gisbldgsqft);
+  const sqft = toNumber(property.buildingArea);
   if (sqft && sqft > 0) out.square_feet = sqft;
 
-  const construction = toString(fields.struct) ?? toString(fields.bldg_type);
+  const construction = toString(property.constructionType);
   if (construction) out.construction_type = construction;
 
-  // Lot size — Regrid surfaces lot acreage; convert to sqft.
-  const acres = toNumber(fields.gisacre) ?? toNumber(fields.ll_gisacre);
-  if (acres && acres > 0) out.lot_size_sqft = Math.round(acres * ACRES_TO_SQFT);
+  // Lot size — Realie's `landArea` is already in sqft; fall back to
+  // `acres` if `landArea` is absent.
+  const landAreaSqft = toNumber(property.landArea);
+  if (landAreaSqft && landAreaSqft > 0) {
+    out.lot_size_sqft = Math.round(landAreaSqft);
+  } else {
+    const acres = toNumber(property.acres);
+    if (acres && acres > 0) out.lot_size_sqft = Math.round(acres * ACRES_TO_SQFT);
+  }
 
-  const owner = toString(fields.owner) ?? toString(fields.ll_owner);
+  const owner = toString(property.ownerName);
   if (owner) out.owner_of_record = owner;
 
-  const parcelId = toString(fields.parcelnumb) ?? toString(fields.ll_uuid);
+  const parcelId = toString(property.parcelId);
   if (parcelId) out.parcel_id = parcelId;
 
-  // C.S.1.6.6 — Land use. Regrid surfaces both a raw jurisdiction
-  // code (`usecode`) and a normalized description (`usedesc`). Some
-  // datasets only carry the LBCS function variant. We capture both
-  // when present so the chat tool can lead with the asset-type
-  // inference instead of asking blind.
-  const landUseCode = toString(fields.usecode) ?? toString(fields.lbcs_function);
-  if (landUseCode) out.land_use_code = landUseCode;
-  const landUseDesc =
-    toString(fields.usedesc) ??
-    toString(fields.lbcs_function_desc) ??
-    toString(fields.zoning_description);
-  if (landUseDesc) out.land_use_desc = landUseDesc;
+  // Land use — code + inline description map.
+  const code = toString(property.useCode);
+  if (code) {
+    out.land_use_code = code;
+    out.land_use_desc = REALIE_USE_CODE_DESC[code] ?? `Use code ${code}`;
+  }
 
   return out;
 }
