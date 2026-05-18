@@ -212,13 +212,23 @@
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 0; /* spacing is owned by .wm-mark (rule slot) and .wm-sub (top margin) */
   color: var(--ink);
 }
 .wordmark.align-left { align-items: flex-start; }
-.wordmark.align-left .wm-rule { width: 64px; }
-.wordmark.align-left.md .wm-rule { width: 88px; }
-.wordmark.align-left.lg .wm-rule { width: 120px; }
+
+/* .wm-mark wraps the name + rule so the rule's positioning is scoped to
+   CARBON's visual width — not the wider wordmark flex container. With
+   `position: relative` here and `position: absolute; left: 50%;
+   transform: translateX(-50%)` on the rule, the rule ALWAYS centers
+   under CARBON (anchored under the "RB" letters), regardless of
+   `align-items` on the parent or whether the sub-line is wider than
+   the name at small sizes. Single canonical width per size. */
+.wm-mark {
+  position: relative;
+  display: inline-block;
+  padding-bottom: 14px; /* reserves the rule slot; also acts as gap below */
+}
 .wm-name {
   font-family: var(--font-wordmark);
   font-weight: 400;
@@ -231,7 +241,15 @@
   color: var(--ink);
 }
 .wm-name .wm-ca { color: var(--ember); }
-.wm-rule { width: 100px; height: 1px; background: var(--ink); }
+.wm-rule {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 1px;
+  background: var(--ink);
+}
 .wm-sub {
   font-family: var(--font-wordmark);
   font-weight: 400;
@@ -240,6 +258,7 @@
   padding-left: 0.55em;
   text-transform: uppercase;
   color: var(--ink);
+  margin-top: 14px; /* replaces the parent `gap` between .wm-mark and .wm-sub */
 }
 .wordmark.inverted,
 .wordmark.inverted .wm-name,
@@ -261,30 +280,35 @@
 }
 .wordmark.over-video .wm-rule { background: var(--paper); }
 
+/* Per-size — name + sub font, rule width, and mark/sub spacing.
+   The mark's padding-bottom (rule slot + gap) and sub's margin-top
+   replace the wordmark's old `gap`. Values preserve previous totals. */
 .wordmark.sm .wm-name { font-size: 28px; }
-.wordmark.sm .wm-sub  { font-size: 9px; }
+.wordmark.sm .wm-sub  { font-size: 9px;  margin-top: 8px; }
 .wordmark.sm .wm-rule { width: 48px; }
-.wordmark.sm          { gap: 8px; }
+.wordmark.sm .wm-mark { padding-bottom: 8px; }
 
 .wordmark.md .wm-name { font-size: 48px; }
-.wordmark.md .wm-sub  { font-size: 11px; }
+.wordmark.md .wm-sub  { font-size: 11px; margin-top: 10px; }
 .wordmark.md .wm-rule { width: 72px; }
-.wordmark.md          { gap: 10px; }
+.wordmark.md .wm-mark { padding-bottom: 10px; }
 
 .wordmark.lg .wm-name { font-size: 96px; }
-.wordmark.lg .wm-sub  { font-size: 16px; }
+.wordmark.lg .wm-sub  { font-size: 16px; margin-top: 14px; }
 .wordmark.lg .wm-rule { width: 140px; }
+.wordmark.lg .wm-mark { padding-bottom: 14px; }
 
 .wordmark.xl .wm-name { font-size: 144px; }
-.wordmark.xl .wm-sub  { font-size: 20px; }
+.wordmark.xl .wm-sub  { font-size: 20px; margin-top: 14px; }
 .wordmark.xl .wm-rule { width: 200px; }
+.wordmark.xl .wm-mark { padding-bottom: 14px; }
 
 /* Mobile wordmark — at ≤375px viewport render at .sm size, centered, tracking preserved */
 @media (max-width: 375px) {
   .wordmark .wm-name { font-size: 28px; }
-  .wordmark .wm-sub  { font-size: 9px; }
+  .wordmark .wm-sub  { font-size: 9px;  margin-top: 8px; }
   .wordmark .wm-rule { width: 48px; }
-  .wordmark          { gap: 8px; }
+  .wordmark .wm-mark { padding-bottom: 8px; }
 }
 
 /* =========================================================================
