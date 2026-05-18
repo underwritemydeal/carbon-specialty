@@ -4,10 +4,9 @@ import { PhotoSlot } from "./PhotoSlot";
 
 const COLOPHON = {
   brand:
-    "California-based real estate specialty. Selective placements available nationally through wholesale and program partners.",
+    "Real estate insurance for investment property owners. Nationwide — direct admitted appointments where available, wholesale and program partners where they're not.",
   services: [
     { label: "What we write", href: "/what-we-write" },
-    { label: "Coverage", href: "/coverage" },
     { label: "How it works", href: "/how-it-works" },
     { label: "Get a quote", href: "/quote" },
   ],
@@ -44,8 +43,8 @@ export function Footer() {
         }}
       >
         <PhotoSlot
-          alt="Wide-angle California urban skyline at dusk, mid-rise apartment buildings and palm trees silhouetted against the sky."
-          caption="Dusk · Western Skyline · 05"
+          alt="Wide-angle urban skyline at dusk, mid-rise apartment buildings silhouetted against the sky."
+          caption="Dusk · Skyline · 05"
           inverted
           fill
         />

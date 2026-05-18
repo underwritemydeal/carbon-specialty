@@ -12,9 +12,9 @@ import {
 } from "@/lib/schema";
 
 export const metadata: Metadata = {
-  title: "About — California-led, Western US specialists",
+  title: "About — real estate insurance specialists for investment property owners",
   description:
-    "Carbon Specialty is California-led. Western US specialists in real estate and apartment building insurance. Founded by Robby Hess (20+ years commercial insurance) and Anthony Miller (30 years industry).",
+    "Carbon Specialty specializes in real estate insurance for investment property owners, nationwide. Founded by Robby Hess (20+ years commercial insurance) and Anthony Miller (30 years industry).",
   alternates: { canonical: "/about" },
 };
 
@@ -39,10 +39,11 @@ export default function AboutPage() {
           eyebrow="About"
           headline={
             <>
-              California-led. <em style={{ fontStyle: "italic" }}>Western US specialists.</em>
+              Real estate insurance for{" "}
+              <em style={{ fontStyle: "italic" }}>investment property owners.</em>
             </>
           }
-          lede="Carbon Specialty is an independent insurance brokerage focused on real estate and apartment building insurance. Licensed across Arizona, California, Colorado, Idaho, Nevada, Oregon, Texas, Utah, and Washington. Depth over breadth — one specialty, one set of markets, one short list of carriers per asset class."
+          lede="Carbon Specialty is an independent insurance brokerage specializing in real estate insurance for investment property owners — nationwide. Depth over breadth: one specialty, the right carrier or program for every region of the country, one short list of submissions per asset class."
         >
           <div
             style={{
@@ -83,7 +84,7 @@ export default function AboutPage() {
                 Geography
               </span>
               <p style={{ marginTop: 12, fontFamily: "var(--font-body)", fontSize: 16, lineHeight: 1.6, color: "var(--ink-2)" }}>
-                California, Arizona, Colorado, Idaho, Nevada, Oregon, Texas, Utah, Washington. Most of the book sits in California multifamily; the second-largest segment is mixed-use across the West.
+                Nationwide. Carbon places business in every region of the country — direct admitted appointments where they make sense and wholesale or program partners where the right market lives elsewhere. Carbon&apos;s job is to know which one belongs on your schedule before the submission goes out.
               </p>
             </div>
             <style>{`

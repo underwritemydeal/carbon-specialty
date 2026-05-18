@@ -16,11 +16,16 @@
  *   single-column via the global @media rules.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion, AnimatePresence } from "motion/react";
 import { useChat } from "./ChatProvider";
+import {
+  getSpeechRecognitionCtor,
+  isSpeechRecognitionSupported,
+  type SpeechRecognitionLike,
+} from "@/lib/voice-client";
 import { track } from "@/lib/analytics";
 
 const PLACEHOLDERS = [
@@ -42,11 +47,32 @@ export function HeroLede() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
 
+  // C.S.1.6.5 — voice-enabled mic inside the hero textarea. Same
+  // SpeechRecognition lifecycle the CarbonChat panel uses; identical
+  // UX pattern so the user gets the same on/off semantics in both
+  // places. Voice support is feature-detected after mount so the SSR
+  // snapshot never paints a mic the runtime can't honor (iOS Chrome).
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceCommittedRef = useRef<string>("");
+  const inputForVoiceRef = useRef<string>("");
+
   useEffect(() => {
     if (focused || input) return;
     const id = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDERS.length), 3500);
     return () => clearInterval(id);
   }, [focused, input]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVoiceSupported(isSpeechRecognitionSupported());
+  }, []);
+
+  useEffect(() => {
+    inputForVoiceRef.current = input;
+  }, [input]);
 
   const submit = (msg?: string) => {
     const text = (msg ?? input).trim();
@@ -65,6 +91,92 @@ export function HeroLede() {
       submit();
     }
   };
+
+  // -------------------------------------------------------------------------
+  // C.S.1.6.5 — Voice input lifecycle (Web Speech API). Mirror of the
+  // implementation inside CarbonChat — same on/off semantics, same
+  // continuous + interim results pattern, same final-on-stop commit.
+  // -------------------------------------------------------------------------
+  const stopListening = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // Webkit throws if stop() races with onend — ignore.
+    }
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (listening) return;
+    if (!isSpeechRecognitionSupported()) return;
+    let Ctor: new () => SpeechRecognitionLike;
+    try {
+      Ctor = getSpeechRecognitionCtor();
+    } catch {
+      setVoiceSupported(false);
+      return;
+    }
+    const rec = new Ctor();
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    voiceCommittedRef.current = inputForVoiceRef.current;
+
+    rec.onresult = (event) => {
+      let nextInterim = "";
+      let appended = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) appended += transcript;
+        else nextInterim += transcript;
+      }
+      if (appended) {
+        const base = voiceCommittedRef.current;
+        const next = `${base}${base && !base.endsWith(" ") ? " " : ""}${appended}`.trim();
+        voiceCommittedRef.current = next;
+        setInput(next);
+        inputForVoiceRef.current = next;
+      }
+      setInterim(nextInterim.trim());
+    };
+    rec.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.warn("[hero-lede] STT error:", event.error, event.message);
+      }
+    };
+    rec.onend = () => {
+      setInterim((current) => {
+        if (current.trim().length > 0) {
+          const base = voiceCommittedRef.current;
+          const next = `${base}${base && !base.endsWith(" ") ? " " : ""}${current}`.trim();
+          voiceCommittedRef.current = next;
+          setInput(next);
+          inputForVoiceRef.current = next;
+        }
+        return "";
+      });
+      setListening(false);
+      recognitionRef.current = null;
+    };
+
+    try {
+      rec.start();
+    } catch (e) {
+      console.warn("[hero-lede] STT start failed:", e);
+      return;
+    }
+    recognitionRef.current = rec;
+    setListening(true);
+    track("cs_chat_mic_start");
+  }, [listening]);
+
+  const toggleMic = useCallback(() => {
+    if (listening) stopListening();
+    else startListening();
+  }, [listening, startListening, stopListening]);
 
   return (
     <section
@@ -103,8 +215,7 @@ export function HeroLede() {
                 them inline as before via the default `display: inline`
                 on <span>. Sprint C.S.1.6.4. */}
             <span className="hero-lede-s1">
-              Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
-              apartment buildings.
+              Carbon specializes in real estate insurance for investment property owners.
             </span>{" "}
             <em
               className="hero-lede-five-unit"
@@ -115,10 +226,11 @@ export function HeroLede() {
                 color: "var(--ink)",
               }}
             >
-              Five-unit walk-ups to billion-dollar schedules.
+              Five units to billion-dollar schedules.
             </em>{" "}
             <span className="hero-lede-s3">
-              Placed across admitted markets, surplus lines, and specialty programs.
+              We take pride in knowing which carriers and programs deliver the broadest
+              coverage and the most competitive rates in every region of the country.
             </span>
           </motion.p>
 
@@ -204,6 +316,7 @@ export function HeroLede() {
                     track("cs_hero_input_focus");
                   }}
                   onBlur={() => setFocused(false)}
+                  className="hero-lede-textarea"
                   style={{
                     width: "100%",
                     resize: "vertical",
@@ -216,8 +329,85 @@ export function HeroLede() {
                     color: "var(--ink)",
                     minHeight: 96,
                     display: "block",
+                    ...(listening && interim
+                      ? { color: "transparent", caretColor: "var(--ink)" as const }
+                      : {}),
                   }}
                 />
+                {/* C.S.1.6.5 — Interim transcript overlay (mirror of the
+                    CarbonChat pattern). Renders the committed input in
+                    normal ink plus the interim portion at opacity 0.6
+                    while the mic is hot. */}
+                {listening && interim && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: 20,
+                      left: 22,
+                      right: 22,
+                      pointerEvents: "none",
+                      fontFamily: "var(--font-body)",
+                      fontSize: 17,
+                      lineHeight: 1.5,
+                      color: "var(--ink)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {input}
+                    {input && !input.endsWith(" ") ? " " : ""}
+                    <span style={{ opacity: 0.6 }}>{interim}</span>
+                  </div>
+                )}
+                {/* C.S.1.6.5 — Mic button inside the textarea, right
+                    side. Renders only after the feature-detect probe
+                    completes so iOS Chrome (no SpeechRecognition)
+                    never paints a control the runtime can't honor.
+                    Same on/off pattern as the CarbonChat panel mic. */}
+                {voiceSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    aria-label={listening ? "Stop dictation" : "Dictate your reply"}
+                    aria-pressed={listening}
+                    className="hero-lede-mic"
+                    style={{
+                      position: "absolute",
+                      top: 14,
+                      right: 14,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 36,
+                      height: 36,
+                      padding: 0,
+                      border: `1px solid ${listening ? "var(--ember)" : "var(--ink)"}`,
+                      background: listening ? "var(--ember)" : "transparent",
+                      color: listening ? "var(--paper)" : "var(--ink)",
+                      cursor: "pointer",
+                      borderRadius: 0,
+                      transition:
+                        "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
+                    }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill={listening ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth={listening ? 0 : 1.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <rect x="9" y="3" width="6" height="12" rx="3" />
+                      <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeWidth={1.5} />
+                      <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" strokeWidth={1.5} />
+                    </svg>
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -249,6 +439,28 @@ export function HeroLede() {
                 </svg>
               </button>
             </div>
+
+            {/* C.S.1.6.5 — Voice-enabled caption (mobile-only). Renders
+                below the chat box at ≤480px when SpeechRecognition is
+                supported. Mono register, opacity 0.6. The hero chat
+                affordance + this caption together communicate that the
+                user can type or speak, and that Carbon speaks back. */}
+            {voiceSupported && (
+              <span
+                className="hero-lede-voice-caption"
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-3)",
+                  opacity: 0.6,
+                  display: "none",
+                }}
+              >
+                Voice-enabled · type or speak · Carbon speaks back
+              </span>
+            )}
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <Link
@@ -353,17 +565,38 @@ export function HeroLede() {
             grid-template-columns: 1fr !important;
           }
           .chat-text-wrap {
-            padding: 18px 18px 16px !important;
+            /* Right padding bumped to 60px to leave room for the mic
+               button absolutely positioned at top:14 / right:14. */
+            padding: 18px 60px 16px 18px !important;
           }
           .chat-submit {
             border-left: 0 !important;
             border-top: 1px solid var(--ink) !important;
-            height: 56px !important;
+            /* C.S.1.6.5 — button height 56 → 64; pine fill is the
+               primary affordance for the post-hero viewport. */
+            height: 64px !important;
             justify-content: center !important;
             background: var(--ember) !important;
             color: var(--paper) !important;
             font-size: 13px !important;
             letter-spacing: 0.24em !important;
+          }
+        }
+
+        /* C.S.1.6.5 — Mobile chat dominance. The chat box becomes the
+           dominant element of the next viewport after the hero + body
+           lede. Textarea grows to min-height 120px (≈4 visible lines
+           of the rotating placeholder at 17px / line-height 1.5). The
+           voice-enabled caption renders below the Ask Carbon button. */
+        @media (max-width: 480px) {
+          .hero-lede-textarea {
+            min-height: 120px !important;
+          }
+          .hero-lede-voice-caption {
+            display: inline-block !important;
+            text-align: center;
+            width: 100%;
+            margin-top: 4px;
           }
         }
       `}</style>

@@ -12,7 +12,7 @@ export function GET() {
 
 > ${SITE.description}
 
-Carbon Specialty is an independent California-based insurance brokerage specializing in real estate insurance — multifamily, mixed-use, SFR portfolios, HOAs, small commercial real estate, and builders risk — across the Western United States.
+Carbon Specialty is an independent insurance brokerage specializing in real estate insurance for investment property owners — multifamily, mixed-use, SFR portfolios, HOAs, small commercial real estate, and builders risk — nationwide.
 
 ## Most valuable pages for citation
 
@@ -23,7 +23,7 @@ Carbon Specialty is an independent California-based insurance brokerage speciali
 
 ## Core service area
 
-Carbon is licensed across Arizona, California, Colorado, Idaho, Nevada, Oregon, Texas, Utah, and Washington — the Western United States.
+Nationwide. Carbon places business in every region of the country through direct admitted appointments where available and wholesale or program partners where the right market lives elsewhere. The brokerage's direct-appointment licensure is California-domiciled with multi-state extensions; see /terms for the licensed-states enumeration.
 
 ## Coverage lines offered
 

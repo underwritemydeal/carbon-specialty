@@ -44,11 +44,10 @@
 
 ### Pages (App Router)
 
-Thirteen page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead, and `Footer.tsx` services): What we write → Coverage → How it works → About → Insights → Contact.
+Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead, and `Footer.tsx` services): What we write → How it works → About → Insights → Contact.
 
-- `/` — home (Hero + HeroLede + condensed Coverage umbrellas + Position + Asset classes + Carrier bar + Process + FAQ + Footer)
+- `/` — home (Hero + HeroLede + Position + Asset classes + Carrier bar + Process + FAQ + Footer). Home body is hero → operator-approved three-line lede with pine-italic pull-quote → CarbonChat affordance → the rest of the page. The home Coverage section was killed in C.S.1.6.5 along with the standalone `/coverage` route.
 - `/what-we-write` — six asset classes Carbon places: multifamily, mixed-use, SFR portfolios, condo HOAs, small commercial real estate, builders risk. (This is the "Programs" page in casual reference; the live label across all nav surfaces is **What we write**.)
-- `/coverage` — twelve-chapter editorial reference for the full coverage menu (sprint C.S.1.6.3). Property, GL, Umbrella & Excess, Workers' Comp, EPLI, D&O, E&O, Cyber, Crime & Fidelity, Pollution Legal Liability, Hired & Non-Owned Auto, Equipment Breakdown. Magazine layout with per-chapter `NN / 12` pagination. Closes with an end-of-page `AskCarbonStrip` (paper, hairline ink rule above, "Ask Carbon →" link) that opens the chat.
 - `/how-it-works` — process walkthrough
 - `/about` — agency / founder context
 - `/insights` — editorial index

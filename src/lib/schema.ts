@@ -19,8 +19,14 @@ function postalAddress() {
 }
 
 function areaServed() {
+  // C.S.1.6.5 — emit Country for nationwide entries (code "US") and
+  // State for individual-state entries. Until C.S.1.6.5 the array was
+  // a nine-state Western US list (@type State); the nationwide pivot
+  // replaced it with a single { name: "United States", code: "US" }
+  // entry. Helper stays generic in case the operator later narrows
+  // back to enumerated states for legal/SEO reasons.
   return SITE.areaServed.map((a) => ({
-    "@type": "State",
+    "@type": a.code === "US" ? "Country" : "State",
     name: a.name,
     identifier: a.code,
   }));
@@ -137,7 +143,7 @@ export function webApplication(): Json {
     url: `${SITE.url}/how-it-works`,
     publisher: { "@id": ORG_ID },
     description:
-      "Conversational AI quote tool for commercial real estate insurance — multifamily, mixed-use, SFR, HOA, builders risk — across the Western United States.",
+      "Conversational AI quote tool for commercial real estate insurance — multifamily, mixed-use, SFR, HOA, builders risk — nationwide.",
   };
 }
 

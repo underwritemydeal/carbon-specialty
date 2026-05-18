@@ -100,9 +100,9 @@ export function Position() {
               }}
             >
               Most brokerages sell breadth. Carbon sells depth. One asset class — real estate
-              — across one geography — California and the eight Western states adjacent.
-              Submissions read like the operator wrote them, because we read them line by line
-              before we send them out.
+              — placed for investment property owners nationwide, through the carriers and
+              programs that fit each region of the country. Submissions read like the operator
+              wrote them, because we read them line by line before we send them out.
             </p>
 
             <p
@@ -191,7 +191,7 @@ export function Position() {
                     color: "var(--paper-2)",
                   }}
                 >
-                  Nine Western states
+                  Every region, nationwide
                 </span>
                 <span
                   style={{

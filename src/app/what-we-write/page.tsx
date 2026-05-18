@@ -16,7 +16,7 @@ import {
 export const metadata: Metadata = {
   title: "What we write — asset classes Carbon insures",
   description:
-    "Carbon Specialty writes real estate insurance across six asset classes: multifamily, mixed-use, SFR portfolios, condo HOAs, small commercial real estate, and builders risk. Western United States.",
+    "Carbon Specialty writes real estate insurance across six asset classes for investment property owners: multifamily, mixed-use, SFR portfolios, condo HOAs, small commercial real estate, and builders risk. Nationwide.",
   alternates: { canonical: "/what-we-write" },
 };
 
@@ -43,7 +43,7 @@ export default function WhatWeWritePage() {
               Buildings, owners, and the policies they need.
             </>
           }
-          lede="Carbon Specialty writes real estate insurance for multifamily and apartment buildings, mixed-use, SFR portfolios, condo HOAs, small commercial real estate, and builders risk — California-led, across nine Western United States."
+          lede="Carbon Specialty writes real estate insurance for multifamily and apartment buildings, mixed-use, SFR portfolios, condo HOAs, small commercial real estate, and builders risk — for investment property owners nationwide."
         >
           <AssetClasses />
         </Section>
