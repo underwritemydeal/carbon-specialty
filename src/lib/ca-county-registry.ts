@@ -99,6 +99,43 @@ export interface CACountyFields {
   parcelId?: string;
 }
 
+/**
+ * Optional second-query table-join fields (sprint C.S.1.7.0c).
+ *
+ * Some CA counties split parcel geometry/identity from building
+ * characteristics across two ArcGIS layers. Riverside is the first:
+ *
+ *   - PARCELS_CREST (MapServer/50)  — geometry + APN + CLASS_CODE +
+ *                                     owner mailing
+ *   - CREST_PROPERTY_CHAR (MapServer/80) — year_built, sqft, stories,
+ *                                          construction_type, br/ba, roof
+ *
+ * The join is APN (primary) → PIN (joined). A parcel can have many
+ * building rows in the joined table (large apartment complexes return
+ * 13–22 rows). `fetchCACounty` aggregates those rows insurance-tuned:
+ * year=MIN, sqft=SUM, stories=MAX, construction_type/roof=mode,
+ * bedrooms/bathrooms=SUM.
+ *
+ * Insurance-tuned scope applies — same DROP list as the primary
+ * registry. No lot size / assessed value / sale data even if the
+ * joined table publishes them.
+ *
+ * Units is intentionally NOT mapped: CREST_PROPERTY_CHAR does NOT
+ * publish a unit-count field at all. Riverside encodes unit ranges in
+ * CLASS_CODE strings on the primary layer ("Apartment 21 - 40 Units")
+ * — Carbon's chat reads the use_desc and asks the user for an exact
+ * count when needed. */
+export interface CACountyTableJoinFields {
+  yearBuilt?: string;
+  effectiveYearBuilt?: string;
+  buildingSqft?: string;
+  constructionType?: string;
+  stories?: string;
+  bedrooms?: string;
+  bathrooms?: string;
+  roofType?: string;
+}
+
 export interface CACountyConfig {
   /** Slug — used for logging + the EnrichmentSource tag. */
   slug: string;
@@ -113,6 +150,25 @@ export interface CACountyConfig {
    *  if the default doesn't work. */
   defaultRadiusMeters?: number;
   fields: CACountyFields;
+
+  /** C.S.1.7.0c — optional second-query table join URL. When set,
+   *  `fetchCACounty` fires a second query against this layer after the
+   *  primary query, using the primary record's join-key value, and
+   *  merges the joined fields into PropertyFacts.building. */
+  assessorTableJoinUrl?: string;
+  /** Field in the PRIMARY record holding the join value (e.g. "APN"
+   *  on Riverside's PARCELS_CREST). */
+  assessorTableJoinKey?: string;
+  /** Field name in the JOINED table that matches the primary key
+   *  value. Defaults to `assessorTableJoinKey` when omitted (same
+   *  field name on both layers). Riverside uses "PIN" on the joined
+   *  table for the value that lives in "APN" on the primary. */
+  assessorTableJoinForeignKey?: string;
+  /** Field mapping for fields pulled from the joined table. Same
+   *  insurance-tuned scope as the primary registry — no lot, no
+   *  assessed value, no sale data even if the joined table publishes
+   *  them. */
+  tableJoinFields?: CACountyTableJoinFields;
 }
 
 /* =========================================================================
@@ -307,12 +363,30 @@ export const ORANGE_COUNTY: CACountyConfig = {
  *   - layer 40 (PARCELS): geometry + APN only. Skip.
  *   - layer 50 (PARCELS_CREST): geometry + 33 attribute fields. Use.
  *
- * The richer parcel facts (year_built, building_sqft, unit count,
- * bedrooms, bathrooms) live in a separate CREST_PROPERTY_CHAR TABLE
- * (id 80) that would need a second APN-join query. That's beyond
- * this single-query registry's scope — a future sprint can extend
- * CACountyConfig with an `assessorTableJoinUrl` field if Carbon
- * needs the joined attributes.
+ * C.S.1.7.0c — The richer parcel facts (year_built, building_sqft,
+ * stories, construction_type, bedrooms, bathrooms, roof_type) live in
+ * the joined CREST_PROPERTY_CHAR table (MapServer/80). The
+ * `assessorTableJoinUrl` field below wires that second query. APN on
+ * this layer joins to PIN on table 80 (same value, different field
+ * name). Multi-row joins (large apartment complexes return up to
+ * ~25 buildings) are aggregated insurance-tuned by `fetchCACounty`.
+ *
+ * Joined-table field-fill matrix per asset class (verified live):
+ *
+ *   | Field               | SFR | Apartment | Commercial |
+ *   |---------------------|-----|-----------|------------|
+ *   | YEAR_BUILT          |  ✓  |     ✓     |     ✓      |
+ *   | LIVING_AREA (sqft)  |  ✓  |   ✗ null  |   ✗ null   |
+ *   | NUMBER_OF_STORIES   |  ✓  |     ✓     |     ✓      |
+ *   | CONSTRUCTION_TYPE   |  ✓  |     ✓     |     ✓      |
+ *   | BEDROOM/BATH_COUNT  |  ✓  |   ✗ null  |   ✗ null   |
+ *   | ROOF_TYPE           |  ✓  |  ✗ blank  |  ✗ blank   |
+ *
+ * Units is intentionally NOT mapped — CREST_PROPERTY_CHAR doesn't
+ * publish a unit-count field. Apartment unit ranges live in the
+ * primary layer's CLASS_CODE string ("Apartment 21 - 40 Units" /
+ * "Apartment Over 100 Units"); Carbon's chat asks the user for an
+ * exact count when needed.
  *
  * Two notable wins for Riverside vs LA:
  *   - CLASS_CODE is already human-readable ("Bank", "Single",
@@ -361,6 +435,28 @@ export const RIVERSIDE_COUNTY: CACountyConfig = {
 
     // Parcel identifier
     parcelId: "APN",
+  },
+
+  // C.S.1.7.0c — second-query table join lights up the CRITICAL fields
+  // (year_built, building_sqft, construction_type, stories) that the
+  // primary layer doesn't publish. Same DROP-list scope as the primary
+  // registry (no lot, no assessed value, no sale data).
+  assessorTableJoinUrl:
+    "https://gis.countyofriverside.us/arcgis_mapping/rest/services/OpenData/Assessor/MapServer/80",
+  assessorTableJoinKey: "APN",
+  // PIN on the joined table holds the same value as APN on the primary.
+  assessorTableJoinForeignKey: "PIN",
+  tableJoinFields: {
+    yearBuilt: "YEAR_BUILT",
+    buildingSqft: "LIVING_AREA",
+    constructionType: "CONSTRUCTION_TYPE",
+    stories: "NUMBER_OF_STORIES",
+    bedrooms: "BEDROOM_COUNT",
+    bathrooms: "BATH_COUNT",
+    roofType: "ROOF_TYPE",
+    // No `units` — CREST_PROPERTY_CHAR doesn't publish unit count.
+    //   See CACountyTableJoinFields header.
+    // No `effectiveYearBuilt` — same.
   },
 };
 

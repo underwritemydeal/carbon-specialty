@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { fetchCACounty, normalizeCountyFeature } from "./fetch-ca-county";
+import {
+  aggregateJoinRows,
+  fetchCACounty,
+  mergeJoinedBuilding,
+  normalizeCountyFeature,
+  type CACountyFacts,
+} from "./fetch-ca-county";
 import {
   LA_COUNTY,
   SAN_DIEGO_COUNTY,
@@ -21,6 +27,13 @@ afterEach(() => {
 function arcgisResponse(attributes: Record<string, unknown>) {
   return new Response(
     JSON.stringify({ features: [{ attributes }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+function arcgisMulti(features: Array<{ attributes: Record<string, unknown> }>) {
+  return new Response(
+    JSON.stringify({ features }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
 }
@@ -399,6 +412,336 @@ describe("normalizeCountyFeature — Orange County", () => {
     expect(out.parcel_id).toBe("111-222-33");
     expect(out.building).toBeUndefined(); // no useCode → no building section
     expect(out.year_built).toBeUndefined();
+  });
+});
+
+/* =========================================================================
+ * Riverside table-join — C.S.1.7.0c
+ * =========================================================================
+ *
+ * Riverside's PARCELS_CREST (MapServer/50) publishes geometry + APN +
+ * CLASS_CODE + owner mailing only. The CRITICAL insurance fields
+ * (year_built, building_sqft, construction_type, stories) live in the
+ * joined CREST_PROPERTY_CHAR table (MapServer/80) keyed by PIN ==
+ * primary APN. A parcel can have many building rows (live-probed at
+ * up to 22 rows for a 100+ unit apartment complex).
+ *
+ * Aggregation strategy (verified in fetchCACounty headers):
+ *   year_built / effective_year_built → MIN
+ *   building_sqft                     → SUM
+ *   stories                           → MAX
+ *   construction_type / roof_type     → MODE
+ *   bedrooms / bathrooms              → SUM
+ * ========================================================================= */
+
+describe("aggregateJoinRows — Riverside CREST_PROPERTY_CHAR (C.S.1.7.0c)", () => {
+  const fields = RIVERSIDE_COUNTY.tableJoinFields!;
+
+  it("returns null when no rows have any registered field", () => {
+    const out = aggregateJoinRows(
+      [{ attributes: { UNRELATED: "ignore" } }],
+      fields,
+    );
+    expect(out).toBeNull();
+  });
+
+  it("single-row SFR — copies fields verbatim (no aggregation needed)", () => {
+    const out = aggregateJoinRows(
+      [
+        {
+          attributes: {
+            YEAR_BUILT: 2026,
+            LIVING_AREA: 4422,
+            NUMBER_OF_STORIES: 2,
+            CONSTRUCTION_TYPE: "Wood or Light Steel (D)",
+            BEDROOM_COUNT: 8,
+            BATH_COUNT: 8,
+            ROOF_TYPE: "Tile/Slate",
+          },
+        },
+      ],
+      fields,
+    );
+    expect(out?.year_built).toBe(2026);
+    expect(out?.building_sqft).toBe(4422);
+    expect(out?.stories).toBe(2);
+    expect(out?.construction_type).toBe("Wood or Light Steel (D)");
+    expect(out?.bedrooms).toBe(8);
+    expect(out?.bathrooms).toBe(8);
+    expect(out?.roof_type).toBe("Tile/Slate");
+  });
+
+  it("multi-row apartment complex — aggregates per insurance-tuned strategy", () => {
+    // Shaped from a live probe of APN 102830002 (2300 Palisades Dr,
+    // Corona — Apartment Over 100 Units). 22 buildings in real life;
+    // 5-row synthetic captures the aggregation behavior.
+    const out = aggregateJoinRows(
+      [
+        { attributes: { YEAR_BUILT: 2015, NUMBER_OF_STORIES: 3, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+        { attributes: { YEAR_BUILT: 2014, NUMBER_OF_STORIES: 2, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+        { attributes: { YEAR_BUILT: 2016, NUMBER_OF_STORIES: 3, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+        { attributes: { YEAR_BUILT: 2015, NUMBER_OF_STORIES: 4, CONSTRUCTION_TYPE: "Concrete / Masonry Bearing Walls (C)" } },
+        { attributes: { YEAR_BUILT: 2015, NUMBER_OF_STORIES: 3, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+      ],
+      fields,
+    );
+    // MIN year — oldest building dominates insurance risk
+    expect(out?.year_built).toBe(2014);
+    // MAX stories — tallest building dominates fire/egress
+    expect(out?.stories).toBe(4);
+    // MODE construction_type — wood/light steel wins 4 to 1
+    expect(out?.construction_type).toBe("Wood or Light Steel (D)");
+  });
+
+  it("SUMs building_sqft + bedrooms + bathrooms across rows", () => {
+    const out = aggregateJoinRows(
+      [
+        { attributes: { LIVING_AREA: 1200, BEDROOM_COUNT: 2, BATH_COUNT: 1 } },
+        { attributes: { LIVING_AREA: 950, BEDROOM_COUNT: 1, BATH_COUNT: 1 } },
+        { attributes: { LIVING_AREA: 1800, BEDROOM_COUNT: 3, BATH_COUNT: 2 } },
+      ],
+      fields,
+    );
+    expect(out?.building_sqft).toBe(1200 + 950 + 1800);
+    expect(out?.bedrooms).toBe(6);
+    expect(out?.bathrooms).toBe(4);
+  });
+
+  it("ignores null/zero/blank values per the existing readers' guards", () => {
+    const out = aggregateJoinRows(
+      [
+        { attributes: { YEAR_BUILT: 1986, LIVING_AREA: null, NUMBER_OF_STORIES: 2, ROOF_TYPE: "" } },
+        { attributes: { YEAR_BUILT: 0, LIVING_AREA: 0, NUMBER_OF_STORIES: null, ROOF_TYPE: null } },
+      ],
+      fields,
+    );
+    // Only the one valid year_built counted
+    expect(out?.year_built).toBe(1986);
+    // sqft sum / count zero → no building_sqft
+    expect(out?.building_sqft).toBeUndefined();
+    // Only the one valid stories counted
+    expect(out?.stories).toBe(2);
+    // Blank/null roof never registered → no roof_type
+    expect(out?.roof_type).toBeUndefined();
+  });
+
+  it("year MIN ignores out-of-range sentinels (year=1500 dropped)", () => {
+    const out = aggregateJoinRows(
+      [
+        { attributes: { YEAR_BUILT: 1500 } }, // out of range
+        { attributes: { YEAR_BUILT: 1953 } },
+        { attributes: { YEAR_BUILT: 1980 } },
+      ],
+      fields,
+    );
+    expect(out?.year_built).toBe(1953);
+  });
+});
+
+describe("mergeJoinedBuilding — primary wins on conflict (C.S.1.7.0c)", () => {
+  it("joined fields fill gaps when primary's building is undefined", () => {
+    const out: CACountyFacts = { source_tag: "riverside-county" };
+    mergeJoinedBuilding(out, {
+      year_built: 1986,
+      building_sqft: 24000,
+      construction_type: "Wood or Light Steel (D)",
+      stories: 3,
+    });
+    expect(out.building?.year_built).toBe(1986);
+    expect(out.building?.building_sqft).toBe(24000);
+    expect(out.year_built).toBe(1986); // re-flattened to top-level
+    expect(out.square_feet).toBe(24000);
+    expect(out.construction_type).toBe("Wood or Light Steel (D)");
+  });
+
+  it("primary's building values win on conflict", () => {
+    const out: CACountyFacts = {
+      source_tag: "riverside-county",
+      year_built: 1900, // primary already populated
+      building: { year_built: 1900, use_desc: "Bank" },
+    };
+    mergeJoinedBuilding(out, { year_built: 1960, building_sqft: 5000 });
+    // Primary year_built wins
+    expect(out.building?.year_built).toBe(1900);
+    expect(out.year_built).toBe(1900);
+    // Joined building_sqft fills in (primary didn't have it)
+    expect(out.building?.building_sqft).toBe(5000);
+    expect(out.square_feet).toBe(5000);
+    // Primary use_desc preserved
+    expect(out.building?.use_desc).toBe("Bank");
+  });
+});
+
+describe("fetchCACounty — Riverside table-join wiring (C.S.1.7.0c)", () => {
+  const RIV_LAT = 33.8734;
+  const RIV_LON = -117.6047;
+
+  it("fires a second query against MapServer/80 after the primary success", async () => {
+    const fetchSpy = vi
+      .fn()
+      // 1st call — primary (PARCELS_CREST)
+      .mockResolvedValueOnce(
+        arcgisResponse({
+          APN: "102203003",
+          SITUS_STREET: "915 PASEO GRANDE",
+          CLASS_CODE: "Apartment 21 - 40 Units",
+          MAIL_STREET: "X",
+        }),
+      )
+      // 2nd call — joined (CREST_PROPERTY_CHAR)
+      .mockResolvedValueOnce(
+        arcgisMulti([
+          {
+            attributes: {
+              YEAR_BUILT: 1964,
+              NUMBER_OF_STORIES: 2,
+              CONSTRUCTION_TYPE: "Wood or Light Steel (D)",
+              DESIGN_TYPE: "Apartment",
+            },
+          },
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // 2nd call hit the join URL with where-clause filtering on PIN
+    const joinUrl = fetchSpy.mock.calls[1][0] as string;
+    expect(joinUrl).toContain("MapServer/80/query");
+    expect(decodeURIComponent(joinUrl)).toContain("where=PIN='102203003'");
+
+    // Primary + joined merged
+    expect(out?.parcel_id).toBe("102203003");
+    expect(out?.land_use_desc).toBe("Apartment 21 - 40 Units"); // from primary
+    expect(out?.building?.year_built).toBe(1964); // from joined
+    expect(out?.building?.stories).toBe(2);
+    expect(out?.building?.construction_type).toBe("Wood or Light Steel (D)");
+    expect(out?.year_built).toBe(1964); // re-flattened
+    // DROP fields stay absent (insurance-tuned scope)
+    // @ts-expect-error — lot_sqft removed from BuildingFacts
+    expect(out?.building?.lot_sqft).toBeUndefined();
+    // @ts-expect-error — transaction removed from PropertyFacts
+    expect(out?.transaction).toBeUndefined();
+  });
+
+  it("multi-building parcel — joined query aggregates rows insurance-tuned", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        arcgisResponse({ APN: "501051041", CLASS_CODE: "Apartment 61 - 100 Units" }),
+      )
+      .mockResolvedValueOnce(
+        arcgisMulti([
+          { attributes: { YEAR_BUILT: 1986, NUMBER_OF_STORIES: 2, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+          { attributes: { YEAR_BUILT: 1986, NUMBER_OF_STORIES: 3, CONSTRUCTION_TYPE: "Wood or Light Steel (D)" } },
+          { attributes: { YEAR_BUILT: 1990, NUMBER_OF_STORIES: 2, CONSTRUCTION_TYPE: "Concrete / Masonry Bearing Walls (C)" } },
+        ]),
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+    expect(out?.building?.year_built).toBe(1986); // MIN
+    expect(out?.building?.stories).toBe(3); // MAX
+    expect(out?.building?.construction_type).toBe("Wood or Light Steel (D)"); // MODE
+  });
+
+  it("graceful degradation — primary succeeds, joined query fails 502 → primary data ships", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        arcgisResponse({
+          APN: "225124018",
+          SITUS_STREET: "6570 MAGNOLIA AVE",
+          CLASS_CODE: "Bank",
+          MAIL_STREET: "1233 ARLINGTON AVE",
+        }),
+      )
+      .mockResolvedValueOnce(new Response("upstream down", { status: 502 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Primary data still ships
+    expect(out?.parcel_id).toBe("225124018");
+    expect(out?.land_use_desc).toBe("Bank");
+    expect(out?.owner?.mailing_address).toBe("1233 ARLINGTON AVE");
+    // Joined fields stay undefined (graceful degradation)
+    expect(out?.building?.year_built).toBeUndefined();
+    expect(out?.building?.stories).toBeUndefined();
+  });
+
+  it("graceful degradation — joined returns zero rows → primary data ships", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(arcgisResponse({ APN: "999999999", CLASS_CODE: "Bank" }))
+      .mockResolvedValueOnce(arcgisEmpty());
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(out?.parcel_id).toBe("999999999");
+    expect(out?.land_use_desc).toBe("Bank");
+    expect(out?.building?.year_built).toBeUndefined();
+  });
+
+  it("skips the join entirely when primary's APN field is missing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(arcgisResponse({ CLASS_CODE: "Bank" })); // no APN
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+    // Only primary call; no join attempt
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(out?.land_use_desc).toBe("Bank");
+  });
+
+  it("escapes single quotes in the join key value (SQL-92 safety)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(arcgisResponse({ APN: "abc'123", CLASS_CODE: "Bank" }))
+      .mockResolvedValueOnce(arcgisEmpty());
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await fetchCACounty(RIV_LAT, RIV_LON, "Riverside County");
+    const joinUrl = fetchSpy.mock.calls[1][0] as string;
+    expect(decodeURIComponent(joinUrl)).toContain("where=PIN='abc''123'");
+  });
+});
+
+describe("fetchCACounty — non-join counties never fire a 2nd query (C.S.1.7.0c)", () => {
+  it("LA County → exactly one fetch call", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(arcgisResponse(LA_FULL_RECORD));
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(LB_PINE_LAT, LB_PINE_LON, "Los Angeles County");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("San Diego County → exactly one fetch call", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(
+        arcgisResponse({ apn: "5335730100", nucleus_use_cd: "210", year_effective: "1985" }),
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(32.7157, -117.1611, "San Diego County");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("Orange County → exactly one fetch call", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(
+        arcgisResponse({ AssessmentNo: "398-512-01", GPLU_CODE: "C1", GPLU_DESC: "Commercial" }),
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+    await fetchCACounty(33.7455, -117.8677, "Orange County");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 
