@@ -60,7 +60,7 @@ Thirteen page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthe
 
 - `POST /api/chat` — Anthropic Messages API proxy. Uses `claude-haiku-4-5-20251001` with prompt caching on the system block. Server-side tool-use loop, capped at 5 iterations. Modes: `intake` (default) and `extract` (used for structured field extraction at end of conversation). Tool registry includes `enrich_property`. Error categories logged with `[carbon-chat]` prefix: auth | rate-limit | server | network | bad-shape | tool-fail.
 - `POST /api/property/enrich` — Google Geocoding + Regrid + Street View URL composer. 30-day edge cache via `{ next: { revalidate: 2592000 } }`. Partial-failure semantics — returns `sources_succeeded` and `sources_failed` arrays. 502 only when every source fails. Missing env keys degrade gracefully (returns what it can).
-- `POST /api/tts` — Inworld TTS (sprint C.S.1.6.2). `Authorization: Basic ${INWORLD_API_KEY}`, model `inworld-tts-1-5-mini`, voice `Reed`. Returns `audio/mpeg` (MP3, 24 kHz, 64 kbps). Per-IP rate-limit 30 calls / 10 min. Missing key → 503 `NO_KEY` (chat stays usable; voice surfaces silently no-op). Full details in *Anthropic API usage details → Voice (Inworld TTS)* below.
+- `POST /api/tts` — Inworld TTS (sprint C.S.1.6.2). `Authorization: Basic ${INWORLD_API_KEY}`, model `inworld-tts-1.5-mini`, voice `Reed`. Returns `audio/mpeg` (MP3, 24 kHz, 64 kbps). Per-IP rate-limit 30 calls / 10 min. Missing key → 503 `NO_KEY` (chat stays usable; voice surfaces silently no-op). Full details in *Anthropic API usage details → Voice (Inworld TTS)* below.
 - `POST /api/lead-fallback` — Resend integration for non-chat lead submissions (the secondary "standard quote form" path). Gated behind `NEXT_PUBLIC_LEADS_ENDPOINT_READY` flag.
 - `GET /api/og` — dynamic Open Graph image generator for social shares
 - `/llms.txt`, `/sitemap.xml`, `/robots.txt` — AEO foundation files (sitemap currently suppressed by pre-launch lockdown)
@@ -115,7 +115,7 @@ The Inworld client lives in **`src/lib/inworld-tts.ts`** and is consumed only by
 | --- | --- |
 | Endpoint | `POST https://api.inworld.ai/tts/v1/voice` |
 | Auth header | `Authorization: Basic ${INWORLD_API_KEY}` (key is already base64-encoded `client_id:client_secret`) |
-| Model | `inworld-tts-1-5-mini` (operator-selected; cheap + fast for chat-length replies) |
+| Model | `inworld-tts-1.5-mini` (operator-selected; cheap + fast for chat-length replies) |
 | Voice | `Reed` (operator-selected default; per-request override via `voice` param) |
 | Audio out | MP3, 24 kHz, 64 kbps |
 | Env var | `INWORLD_API_KEY` |
