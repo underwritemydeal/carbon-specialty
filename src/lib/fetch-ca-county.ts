@@ -34,6 +34,7 @@ import type {
   OwnerFacts,
   PropertyFacts,
 } from "./property-facts";
+import { querySocrataDataset } from "./socrata-client";
 
 /** The subset of PropertyFacts this fetcher produces. The caller
  *  (`enrichAddress` in /api/property/enrich/route.ts) merges it into
@@ -82,6 +83,13 @@ export async function fetchCACounty(
   const county = findCACounty(detectedCounty);
   if (!county) return null;
 
+  // C.S.1.7.0d — dispatch on client type. ArcGIS counties (LA, SD,
+  // OC, Riverside) take the original FeatureServer path. Socrata
+  // counties (SF) take the SoQL path.
+  if (county.client === "socrata") {
+    return fetchSocrataCounty(lat, lon, county);
+  }
+
   const features = await queryFeatureService(county.featureServiceUrl, {
     point: { lat, lon },
     radiusMeters: county.defaultRadiusMeters,
@@ -108,6 +116,43 @@ export async function fetchCACounty(
   }
 
   return out;
+}
+
+/* =========================================================================
+ * Socrata-client county fetcher — C.S.1.7.0d
+ *
+ * SoQL `within_circle(geometryField, lat, lon, distance)` query
+ * against the dataset, AND-ed with the county's `baseWhere` (e.g.
+ * SF Tax Rolls pinning to `closed_roll_year='2024'`). Returns the
+ * first matching row through the same `normalizeCountyFeature`
+ * translator — the field-mapping registry is source-agnostic, so
+ * the Socrata field names (`year_property_built`, `property_area`,
+ * etc.) work without per-source code paths beyond the dispatcher.
+ *
+ * No table-join branch — neither SF dataset nor any other Socrata-
+ * client county on the roadmap requires the C.S.1.7.0c join pattern.
+ * If one ever does, dispatch can extend here without touching the
+ * ArcGIS path.
+ * ========================================================================= */
+
+async function fetchSocrataCounty(
+  lat: number,
+  lon: number,
+  county: CACountyConfig,
+): Promise<CACountyFacts | null> {
+  const cfg = county.socrata;
+  if (!cfg) return null;
+
+  const rows = await querySocrataDataset(cfg.datasetUrl, {
+    point: { lat, lon },
+    radiusMeters: county.defaultRadiusMeters,
+    geometryField: cfg.geometryField,
+    baseWhere: cfg.baseWhere,
+    limit: 1,
+  });
+  if (!rows || rows.length === 0) return null;
+
+  return normalizeCountyFeature(rows[0], county);
 }
 
 /* =========================================================================
@@ -347,11 +392,17 @@ export function normalizeCountyFeature(
     const n = readNumber(attrs, f.bathrooms);
     if (n && n > 0) building.bathrooms = n;
   }
-  // construction_type: composite of constructionType + constructionQualityField
+  // construction_type: composite of constructionType + constructionQualityField.
+  // C.S.1.7.0d — when a `constructionTypeMap` is registered (SF uses
+  // single-letter codes D/A/B/C/S → human-readable strings), the raw
+  // code is translated first.
   const ctParts: string[] = [];
   if (f.constructionType) {
     const v = readString(attrs, f.constructionType);
-    if (v) ctParts.push(v);
+    if (v) {
+      const mapped = f.constructionTypeMap?.[v];
+      ctParts.push(mapped ?? v);
+    }
   }
   if (f.constructionQualityField) {
     const v = readString(attrs, f.constructionQualityField);

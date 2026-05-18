@@ -73,6 +73,13 @@ export interface CACountyFields {
    *  in the human-readable construction_type string. */
   constructionQualityField?: string;
 
+  /** Optional inline lookup translating a coded construction-type
+   *  value (e.g. SF Assessor's single-letter codes "D"/"A"/"B"/"C"/"S")
+   *  into a human-readable description. When present, applied to the
+   *  raw constructionType value in the normalizer. Reusable by any
+   *  future county that publishes coded types — new in C.S.1.7.0d. */
+  constructionTypeMap?: Record<string, string>;
+
   // Building — USEFUL
   /** Year of major rehab / effective age for valuation. LA's
    *  EffectiveYear1 is the source field where this exists. */
@@ -136,6 +143,22 @@ export interface CACountyTableJoinFields {
   roofType?: string;
 }
 
+/** Socrata-specific config (C.S.1.7.0d). Required when
+ *  `client === "socrata"`. */
+export interface CACountySocrataConfig {
+  /** Full dataset URL of the form
+   *  `https://data.<org>.gov/resource/<dataset-id>.json`. */
+  datasetUrl: string;
+  /** Geometry field on the dataset (DataSF convention: `the_geom`). */
+  geometryField: string;
+  /** Constant SoQL filter applied to every query — typical use is
+   *  pinning to the latest annual snapshot (`closed_roll_year='2024'`
+   *  for SF Tax Rolls so a single APN that carries every fiscal year
+   *  back to 2007 returns only the current one). AND-ed with the
+   *  geometry query. */
+  baseWhere?: string;
+}
+
 export interface CACountyConfig {
   /** Slug — used for logging + the EnrichmentSource tag. */
   slug: string;
@@ -143,13 +166,18 @@ export interface CACountyConfig {
   county: string;
   state: "CA";
   client: CountyClient;
-  /** Full URL of the ArcGIS layer (".../FeatureServer/<layerId>") or
-   *  Socrata dataset endpoint, depending on `client`. */
+  /** ArcGIS-only: full URL of the layer (".../FeatureServer/<layerId>").
+   *  Empty for Socrata-clients (see `socrata` instead). Kept required
+   *  so existing arcgis entries don't need to know about the union
+   *  shape — the dispatcher in fetchCACounty checks `client` first. */
   featureServiceUrl: string;
   /** Search radius (meters) for point queries. Override per-county
    *  if the default doesn't work. */
   defaultRadiusMeters?: number;
   fields: CACountyFields;
+
+  /** Socrata-client config — required when `client === "socrata"`. */
+  socrata?: CACountySocrataConfig;
 
   /** C.S.1.7.0c — optional second-query table join URL. When set,
    *  `fetchCACounty` fires a second query against this layer after the
@@ -460,12 +488,112 @@ export const RIVERSIDE_COUNTY: CACountyConfig = {
   },
 };
 
+/* =========================================================================
+ * San Francisco County (added C.S.1.7.0d — first Socrata-client county)
+ * =========================================================================
+ *
+ * Dataset: SF DataSF "Assessor Historical Secured Property Tax Rolls"
+ *   https://data.sfgov.org/resource/wv5m-vpq2.json
+ *
+ * Single comprehensive dataset — every CRITICAL + USEFUL insurance
+ * field plus geometry, plus the construction-type code (single
+ * letter A/B/C/D/S translated via `constructionTypeMap` below).
+ * Updated annually; latest snapshot is `closed_roll_year='2024'`
+ * (rowsUpdatedAt 2025-09-25 at registry time). The Tax Rolls dataset
+ * carries one row per APN per fiscal year going back to 2007 —
+ * `baseWhere` pins every query to the latest year so we don't pull
+ * 18 rows for a parcel that's been on the rolls since 2007.
+ *
+ * Land Use 2020 (us3s-fp9q) intentionally NOT wired — DataSF
+ * archived it (rowsUpdatedAt 2023-10, schema returns 0 columns).
+ * Tax Rolls supersedes it for every CRITICAL field. See
+ * CARBON_RESEARCH.md "Property data API landscape" for the staleness
+ * trail.
+ *
+ * Field availability matrix (live-probed per asset class):
+ *
+ *   | Field                              | SFR | MRES | Commercial |
+ *   |------------------------------------|-----|------|------------|
+ *   | use_code + use_definition          |  ✓  |   ✓  |     ✓      |
+ *   | property_class_code_definition     |  ✓  |   ✓  |     ✓      |
+ *   | year_property_built                |  ✓  |   ✓  |   ✓ (some) |
+ *   | number_of_units                    |  ✓  |   ✓  |     ✓      |
+ *   | property_area (building sqft)      |  ✓  |   ✓  |     ✓      |
+ *   | construction_type (coded)          |  ✓  |   ✓  |     ✓      |
+ *   | number_of_stories                  |  ✓  |   ✓  |   ✓ (some) |
+ *   | number_of_bedrooms / _bathrooms    |  ✓  |   ✓  |     ✗      |
+ *
+ * Construction-type codes (per SF Assessor, ISO-aligned). Wrapped
+ * into `constructionTypeMap` so the chat surfaces a human-readable
+ * string instead of a single letter.
+ * ========================================================================= */
+export const SAN_FRANCISCO_COUNTY: CACountyConfig = {
+  slug: "san-francisco-county",
+  county: "San Francisco County",
+  state: "CA",
+  client: "socrata",
+  // Unused for socrata clients but the type requires it.
+  featureServiceUrl: "",
+  defaultRadiusMeters: 50,
+  socrata: {
+    datasetUrl: "https://data.sfgov.org/resource/wv5m-vpq2.json",
+    geometryField: "the_geom",
+    // Always pin to the latest closed_roll_year. Bump this when SF
+    // publishes 2025 (typical refresh window: Sept/Oct after the
+    // fiscal year close on June 30).
+    baseWhere: "closed_roll_year='2024'",
+  },
+  fields: {
+    address: "property_location",
+
+    // Building — CRITICAL
+    useCode: "use_code",
+    useDescField: "use_definition",
+    yearBuilt: "year_property_built",
+    buildingSqft: "property_area",
+    units: "number_of_units",
+    stories: "number_of_stories",
+    constructionType: "construction_type",
+    // SF Assessor publishes a single-letter code. Map to human-readable
+    // for chat. Codes verified via dataset distribution probe:
+    //   D = 152K parcels, NA = 47K, C = 5K, A = 3K, B = 2K, S = 483.
+    constructionTypeMap: {
+      A: "Fire-Resistive (Type I)",
+      B: "Non-Combustible (Type II)",
+      C: "Heavy Timber / Masonry (Type III)",
+      D: "Wood Frame (Type V)",
+      S: "Steel Frame",
+      WOO: "Wood Frame",
+      STE: "Steel Frame",
+      REI: "Reinforced Concrete",
+      NA: "Unknown (per assessor)",
+    },
+
+    // Building — USEFUL
+    bedrooms: "number_of_bedrooms",
+    bathrooms: "number_of_bathrooms",
+
+    // Owner — SF doesn't publish owner data on this dataset (same
+    // CA privacy gap as LA + SD). Future marketing-export sprint
+    // needs a separate source.
+
+    // (Lot sqft + assessed value + sale data NOT mapped — C.S.1.7.0b
+    //  insurance-tuning DROP list. SF Tax Rolls does publish them
+    //  in lot_area, assessed_land_value, assessed_improvement_value,
+    //  current_sales_date — we just stop reading them.)
+
+    // Parcel identifier — `parcel_number` (block + lot concatenated).
+    parcelId: "parcel_number",
+  },
+};
+
 /** All registered CA counties. Subsequent sprints append here. */
 export const CA_COUNTIES: ReadonlyArray<CACountyConfig> = [
   LA_COUNTY,
   SAN_DIEGO_COUNTY,
   ORANGE_COUNTY,
   RIVERSIDE_COUNTY,
+  SAN_FRANCISCO_COUNTY,
 ];
 
 /** Lookup by county name. Accepts forms with/without "County" suffix
