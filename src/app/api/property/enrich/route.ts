@@ -195,14 +195,44 @@ export async function fetchRegrid(
   // Regrid Parcel API — address lookup. Returns a parcel collection;
   // we take the top match.
   const url = `https://app.regrid.com/api/v2/parcels/address?query=${encodeURIComponent(address)}&limit=1&token=${token}`;
+  // C.S.1.6.6 hot-fix — Regrid was silently 0-data on every prod
+  // address tested in the C.S.1.6.6 deploy. fetchRegrid swallowed
+  // every failure mode (non-OK status, empty-parcel response,
+  // network/JSON throw) as null, leaving no signal in Vercel logs.
+  // Diagnostic logging here surfaces the actual upstream behavior.
+  // The token is REDACTED from logged URLs (the only secret in the
+  // query string). Address is fine to log — it's user-typed.
+  const redactedUrl = url.replace(token, "REDACTED");
   try {
     const res = await fetch(url, { next: { revalidate: 2592000 } });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      let bodyPreview = "";
+      try {
+        bodyPreview = (await res.text()).slice(0, 200);
+      } catch {
+        // ignore
+      }
+      console.warn(
+        `[carbon-enrich] REGRID_NON_OK status=${res.status} url=${redactedUrl} body=${bodyPreview}`,
+      );
+      return null;
+    }
     const data = (await res.json()) as RegridResponse;
     const fields = data.parcels?.features?.[0]?.properties?.fields;
-    if (!fields) return null;
+    if (!fields) {
+      const featuresLen = data.parcels?.features?.length ?? 0;
+      console.warn(
+        `[carbon-enrich] REGRID_EMPTY features=${featuresLen} address=${address.slice(0, 80)}`,
+      );
+      return null;
+    }
     return normalizeRegridFields(fields);
-  } catch {
+  } catch (e) {
+    console.warn(
+      `[carbon-enrich] REGRID_THROW address=${address.slice(0, 80)} err=${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
     return null;
   }
 }
