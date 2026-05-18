@@ -53,9 +53,25 @@ export type EnrichmentSource =
   | "streetview";
 
 /* =========================================================================
- * Grouped sections — C.S.1.7.0a
- * Every field optional. Counties may omit any field. Marketing export
- * reads from these directly; chat-tools.ts reads the flat fields.
+ * Grouped sections — C.S.1.7.0a (extended/tightened C.S.1.7.0b)
+ *
+ * Every field optional. Counties may omit any field.
+ *
+ * Insurance-tuned scope: building section carries the facts an
+ * underwriter actually needs (sqft, units, year, effective year,
+ * construction, stories, sprinklered, roof). Lot size + assessment
+ * + sale data + tax-exempt indicators were dropped — those are
+ * appraisal/marketing concerns, not insurance ones.
+ *
+ * Owner section retained for the future marketing-export use case.
+ * Most CA counties don't publish owner name through public ArcGIS
+ * (privacy policy); Orange + Riverside publish mailing address only.
+ * Carbon's chat doesn't read these — they're staged for the
+ * marketing-export sprint that adds a separate owner-data source.
+ *
+ * TransactionFacts removed in C.S.1.7.0b insurance tuning — every
+ * field that lived there (assessed value, last sale, tax exempt)
+ * was reclassified as DROP for the underwriting use case.
  * ========================================================================= */
 
 export interface BuildingFacts {
@@ -63,49 +79,49 @@ export interface BuildingFacts {
   use_code?: string;
   /** Human-readable use description from the source registry. */
   use_desc?: string;
-  /** Year primary structure was built. */
+  /** Year primary structure was built. CRITICAL for insurance pricing. */
   year_built?: number;
-  /** Building square footage. */
+  /** Year of last major rehab / effective age for valuation. LA
+   *  publishes this as EffectiveYear1 alongside YearBuilt1. USEFUL
+   *  when present — closes the gap on heavily rehabbed older
+   *  buildings that price like newer ones. */
+  effective_year_built?: number;
+  /** Building square footage. CRITICAL. */
   building_sqft?: number;
-  /** Lot square footage (polygon-derived where applicable). */
-  lot_sqft?: number;
-  /** Unit count. For multifamily, the apartment count. */
+  /** Unit count. For multifamily, the apartment count. CRITICAL. */
   units?: number;
-  /** Number of stories. Often undefined — most CA assessors don't publish. */
+  /** Number of stories. CRITICAL but rarely published by CA
+   *  assessors — typically undefined. */
   stories?: number;
+  /** Bedrooms — USEFUL for SFR portfolios where bed count drives
+   *  schedule entries. */
   bedrooms?: number;
+  /** Bathrooms — USEFUL for SFR portfolios alongside bedrooms. */
   bathrooms?: number;
-  /** Construction / design type — quality + frame material varies by
-   *  county. LA uses DesignType + QualityClass; Realie uses
-   *  constructionType. */
+  /** Construction / design type. CRITICAL — drives carrier appetite
+   *  + ISO class. LA uses DesignType + QualityClass composite;
+   *  Realie uses constructionType. */
   construction_type?: string;
+  /** Sprinklered flag. USEFUL — affects fire-rate pricing. Not
+   *  typically published by CA assessors; field exists so future
+   *  inspection-data sources can fill it. */
+  sprinklered?: boolean;
+  /** Roof type. USEFUL — affects wind + hail pricing in some
+   *  markets. Not typically published by CA assessors. */
+  roof_type?: string;
 }
 
-/** Owner-related facts. Mostly undefined for CA counties — LA County
- *  and most CA counties don't publish owner name or mailing address
- *  via public ArcGIS. Marketing-export use case requires a separate
- *  owner-data source. See CARBON_RESEARCH.md. */
+/** Owner-related facts. Mostly undefined for CA counties — LA, SD
+ *  don't publish owner name or mailing address via public ArcGIS by
+ *  policy. Orange + Riverside (C.S.1.7.0b) publish mailing address
+ *  only. Marketing-export use case requires a separate owner-data
+ *  source for owner names sitewide; see CARBON_RESEARCH.md. */
 export interface OwnerFacts {
   name?: string;
   mailing_address?: string;
   mailing_city?: string;
   mailing_state?: string;
   mailing_zip?: string;
-  /** "homeowner-occupied" / "non-occupant" / "exempt". Inferred from
-   *  the assessor's homeowner-exemption flag where published. */
-  ownership_type?: string;
-}
-
-export interface TransactionFacts {
-  /** ISO-format date string if available. Most CA assessors don't
-   *  publish sale dates via public ArcGIS. */
-  last_sale_date?: string;
-  last_sale_price?: number;
-  /** Assessed value = land + improvements. */
-  assessed_value?: number;
-  /** When non-zero, indicates a homeowner / institutional /
-   *  agricultural exemption is on file. */
-  tax_exempt?: number;
 }
 
 export type EnrichmentSourceTag = EnrichmentSource;
@@ -119,12 +135,12 @@ export interface PropertyFacts {
   lat?: number;
   lng?: number;
 
-  /* ---- Flat fields (legacy, populated regardless of source) ---- */
+  /* ---- Flat fields (legacy, populated regardless of source) ----
+   *  lot_size_sqft removed in C.S.1.7.0b insurance tuning. */
   units?: number;
   year_built?: number;
   square_feet?: number;
   construction_type?: string;
-  lot_size_sqft?: number;
   owner_of_record?: string;
   parcel_id?: string;
 
@@ -141,12 +157,14 @@ export interface PropertyFacts {
   /** Building / structure facts. Populated by county-direct sources;
    *  the flat fields above are derived from this where present. */
   building?: BuildingFacts;
-  /** Owner facts. Mostly undefined for CA — LA Assessor and most CA
-   *  counties omit owner data from public ArcGIS by policy. */
+  /** Owner facts. Mostly undefined for CA — LA + SD assessors omit
+   *  owner data from public ArcGIS by policy. Orange + Riverside
+   *  publish mailing address only (no name). Staged for the future
+   *  marketing-export sprint. */
   owner?: OwnerFacts;
-  /** Transaction / valuation facts. Sale data is rarely public via
-   *  ArcGIS; assessed values are. */
-  transaction?: TransactionFacts;
+  // transaction?: TransactionFacts removed in C.S.1.7.0b — every
+  // field that lived in it (assessed value, sale date, tax exempt)
+  // is on the insurance-tuning DROP list.
 
   /** Source the grouped fields came from. Useful for the future
    *  marketing-export pipeline so we can audit per-record data
