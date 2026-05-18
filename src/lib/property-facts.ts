@@ -2,16 +2,21 @@
  * PropertyFacts — sprint C.S.1.6.
  *
  * Shared response shape for /api/property/enrich. The enrichment route
- * composes data from three upstreams (Google Geocoding, Regrid Parcel
- * API, Google Street View Static URL builder) into this single object,
- * gracefully degrading when any upstream is unavailable.
+ * composes data from three upstreams (Google Geocoding, Realie Property
+ * Data API, Google Street View Static URL builder) into this single
+ * object, gracefully degrading when any upstream is unavailable.
  *
  * `sources_succeeded` and `sources_failed` are always present so callers
  * (the chat tool handler) can decide how to phrase the confirmation
  * back to the user without inferring success from missing fields.
  */
 
-export type EnrichmentSource = "geocoding" | "regrid" | "streetview";
+// C.S.1.6.8 — parcel source renamed from "regrid" → "realie".
+// Regrid Self-Serve started at ~$500/mo, didn't fit Carbon's
+// ~25-200 quotes/month early-stage volume. Realie's free tier
+// (25 req/month + $0.15/overage) does. Same response shape into
+// PropertyFacts; only the upstream changed.
+export type EnrichmentSource = "geocoding" | "realie" | "streetview";
 
 export interface PropertyFacts {
   /** The address as the user typed it (or the chat passed in). */

@@ -25,11 +25,16 @@
 ## Environment variables (set on Production + Preview)
 
 - `ANTHROPIC_API_KEY` — for the /api/chat route (Anthropic Messages API)
+- `INWORLD_API_KEY` — for the /api/tts route (Inworld TTS, sprint C.S.1.6.2)
 - `GOOGLE_MAPS_API_KEY` — server-side key, restricted to Geocoding API + Places API + Street View Static API, no application restrictions
-- `REGRID_API_TOKEN` — parcel data lookups
+- `REALIE_API_TOKEN` — Realie Property Data API for parcel/owner/use-code lookups (sprint C.S.1.6.8, replaced REGRID_API_TOKEN). Sent as a raw value in the `Authorization` header (no `Bearer ` prefix per Realie's spec).
 - `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` — client-side key for Places Autocomplete on the chat input (added in Sprint C.S.1.6.1)
 - `NEXT_PUBLIC_LEADS_ENDPOINT_READY` — feature flag for the /api/lead-fallback path (Resend integration)
 - Possibly: `RESEND_API_KEY` — if Robby has configured email yet; check Vercel dashboard
+
+**Deprecated** (still set on Vercel, no longer read by code as of C.S.1.6.8):
+
+- ~~`REGRID_API_TOKEN`~~ — Regrid Self-Serve pricing didn't fit Carbon's ~25–200 quotes/month early-stage volume. Var is intentionally left on Vercel rather than deleted to avoid env-cleanup risk during the swap; safe to remove in any future cleanup sprint.
 
 ## Pre-launch lockdown (intentional, still active)
 
@@ -58,7 +63,7 @@ Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead
 ### API routes
 
 - `POST /api/chat` — Anthropic Messages API proxy. Uses `claude-haiku-4-5-20251001` with prompt caching on the system block. Server-side tool-use loop, capped at 5 iterations. Modes: `intake` (default) and `extract` (used for structured field extraction at end of conversation). Tool registry includes `enrich_property`. Error categories logged with `[carbon-chat]` prefix: auth | rate-limit | server | network | bad-shape | tool-fail.
-- `POST /api/property/enrich` — Google Geocoding + Regrid + Street View URL composer. 30-day edge cache via `{ next: { revalidate: 2592000 } }`. Partial-failure semantics — returns `sources_succeeded` and `sources_failed` arrays. 502 only when every source fails. Missing env keys degrade gracefully (returns what it can).
+- `POST /api/property/enrich` — Google Geocoding + Realie + Street View URL composer. 30-day edge cache via `{ next: { revalidate: 2592000 } }`. Partial-failure semantics — returns `sources_succeeded` and `sources_failed` arrays. 502 only when every source fails. Missing env keys degrade gracefully (returns what it can).
 - `POST /api/tts` — Inworld TTS (sprint C.S.1.6.2). `Authorization: Basic ${INWORLD_API_KEY}`, model `inworld-tts-1.5-mini`, voice `Reed`. Returns `audio/mpeg` (MP3, 24 kHz, 64 kbps). Per-IP rate-limit 30 calls / 10 min. Missing key → 503 `NO_KEY` (chat stays usable; voice surfaces silently no-op). Full details in *Anthropic API usage details → Voice (Inworld TTS)* below.
 - `POST /api/lead-fallback` — Resend integration for non-chat lead submissions (the secondary "standard quote form" path). Gated behind `NEXT_PUBLIC_LEADS_ENDPOINT_READY` flag.
 - `GET /api/og` — dynamic Open Graph image generator for social shares
@@ -80,7 +85,7 @@ Twelve page routes. Primary nav order (matches `Header.tsx`, `Hero.tsx` masthead
 
 ## What's wired end-to-end and working
 
-- Address typed in chat → submitted → `/api/chat` → Claude Haiku 4.5 → tool call `enrich_property` → `/api/property/enrich` → Google Geocoding + Regrid + Street View → response with property facts → Claude resumes conversation with the facts → user sees confirmation in chat.
+- Address typed in chat → submitted → `/api/chat` → Claude Haiku 4.5 → tool call `enrich_property` → `/api/property/enrich` → Google Geocoding + Realie + Street View → response with property facts → Claude resumes conversation with the facts → user sees confirmation in chat.
 - Google Places Autocomplete on the chat input field (Sprint C.S.1.6.1 — verify status if questioned).
 - Resend transactional email via `/api/lead-fallback` (gated behind feature flag).
 - Pre-launch lockdown (noindex + robots.txt Disallow).
