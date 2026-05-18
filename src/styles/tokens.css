@@ -247,11 +247,18 @@
 .wordmark.inverted .wm-rule { background: var(--paper-3); }
 
 /* C.S.1.5 — masthead-over-video variant. CA stays pine (brand stamp);
-   RBON, rule, and SPECIALTY · INSURANCE shift to paper. */
+   RBON, rule, and SPECIALTY · INSURANCE shift to paper.
+   C.S.1.5.1 — the pine CA gets a tight, slightly stronger text-shadow
+   so it reads cleanly against the video even when scroll moves it past
+   the strengthened top gradient's deepest band. Paper elements are not
+   shadowed — they read cleanly on the gradient on their own. */
 .wordmark.over-video,
 .wordmark.over-video .wm-name,
 .wordmark.over-video .wm-sub { color: var(--paper); }
-.wordmark.over-video .wm-name .wm-ca { color: var(--ember); }
+.wordmark.over-video .wm-name .wm-ca {
+  color: var(--ember);
+  text-shadow: 0 1px 16px rgba(11, 11, 12, 0.55);
+}
 .wordmark.over-video .wm-rule { background: var(--paper); }
 
 .wordmark.sm .wm-name { font-size: 28px; }
