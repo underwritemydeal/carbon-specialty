@@ -21,8 +21,12 @@
  * pipeline.
  */
 
+import type { ArcGISFeature } from "./arcgis-client";
 import { queryFeatureService } from "./arcgis-client";
-import type { CACountyConfig } from "./ca-county-registry";
+import type {
+  CACountyConfig,
+  CACountyTableJoinFields,
+} from "./ca-county-registry";
 import { findCACounty } from "./ca-county-registry";
 import type {
   BuildingFacts,
@@ -87,7 +91,193 @@ export async function fetchCACounty(
   if (!features || features.length === 0) return null;
 
   const attrs = features[0].attributes;
-  return normalizeCountyFeature(attrs, county);
+  const out = normalizeCountyFeature(attrs, county);
+
+  // C.S.1.7.0c — optional second-query table join. Riverside is the
+  // first county to use this. Silent-null on failure: primary data
+  // still ships (graceful degradation).
+  if (
+    county.assessorTableJoinUrl &&
+    county.assessorTableJoinKey &&
+    county.tableJoinFields
+  ) {
+    const joined = await fetchAssessorTableJoin(attrs, county);
+    if (joined) {
+      mergeJoinedBuilding(out, joined);
+    }
+  }
+
+  return out;
+}
+
+/* =========================================================================
+ * Assessor table-join (C.S.1.7.0c)
+ *
+ * Second query against `assessorTableJoinUrl` filtered by the primary
+ * record's join-key value. Aggregates multi-row responses (one parcel
+ * may have many building rows — e.g. apartment complexes return
+ * 13–22 rows in Riverside) into a single insurance-tuned BuildingFacts
+ * subset.
+ *
+ * Aggregation strategy:
+ *   year_built / effective_year_built → MIN (oldest = highest risk)
+ *   building_sqft                     → SUM (total under-roof living area)
+ *   stories                           → MAX (tallest)
+ *   construction_type / roof_type     → MODE (most common across rows)
+ *   bedrooms / bathrooms              → SUM (whole parcel total)
+ *
+ * `resultRecordCount: 100` caps multi-row responses at 100 buildings
+ * per parcel. Two orders of magnitude above the largest live-probe
+ * sample (22 rows for a 100+ unit Corona apartment complex); below the
+ * default 1000 ArcGIS hard cap so we don't accidentally pull a 999-row
+ * response if a malformed join hits.
+ * ========================================================================= */
+
+export async function fetchAssessorTableJoin(
+  primaryAttrs: Record<string, unknown>,
+  county: CACountyConfig,
+): Promise<BuildingFacts | null> {
+  if (
+    !county.assessorTableJoinUrl ||
+    !county.assessorTableJoinKey ||
+    !county.tableJoinFields
+  ) {
+    return null;
+  }
+
+  const keyValRaw = primaryAttrs[county.assessorTableJoinKey];
+  if (keyValRaw === undefined || keyValRaw === null) return null;
+  const keyValStr = String(keyValRaw).trim();
+  if (!keyValStr) return null;
+
+  const foreignKey =
+    county.assessorTableJoinForeignKey ?? county.assessorTableJoinKey;
+  // Escape single quotes per SQL-92 (ArcGIS query dialect).
+  const escaped = keyValStr.replace(/'/g, "''");
+
+  const joinFeatures = await queryFeatureService(county.assessorTableJoinUrl, {
+    where: `${foreignKey}='${escaped}'`,
+    outFields: "*",
+    resultRecordCount: 100,
+  });
+  if (!joinFeatures || joinFeatures.length === 0) return null;
+
+  return aggregateJoinRows(joinFeatures, county.tableJoinFields);
+}
+
+/** Aggregate joined-table rows into a single insurance-tuned
+ *  BuildingFacts subset. See header for the per-field strategy. */
+export function aggregateJoinRows(
+  features: ArcGISFeature[],
+  fields: CACountyTableJoinFields,
+): BuildingFacts | null {
+  const years: number[] = [];
+  const effYears: number[] = [];
+  const storiesList: number[] = [];
+  let sqftSum = 0;
+  let sqftCount = 0;
+  let bedSum = 0;
+  let bedCount = 0;
+  let bathSum = 0;
+  let bathCount = 0;
+  const ctCount = new Map<string, number>();
+  const roofCount = new Map<string, number>();
+
+  for (const f of features) {
+    const a = f.attributes;
+    if (fields.yearBuilt) {
+      const y = readNumber(a, fields.yearBuilt);
+      if (y && y > 1700 && y < 2100) years.push(y);
+    }
+    if (fields.effectiveYearBuilt) {
+      const y = readNumber(a, fields.effectiveYearBuilt);
+      if (y && y > 1700 && y < 2100) effYears.push(y);
+    }
+    if (fields.buildingSqft) {
+      const n = readNumber(a, fields.buildingSqft);
+      if (n && n > 0) {
+        sqftSum += n;
+        sqftCount++;
+      }
+    }
+    if (fields.stories) {
+      const n = readNumber(a, fields.stories);
+      if (n && n > 0) storiesList.push(n);
+    }
+    if (fields.bedrooms) {
+      const n = readNumber(a, fields.bedrooms);
+      if (n && n > 0) {
+        bedSum += n;
+        bedCount++;
+      }
+    }
+    if (fields.bathrooms) {
+      const n = readNumber(a, fields.bathrooms);
+      if (n && n > 0) {
+        bathSum += n;
+        bathCount++;
+      }
+    }
+    if (fields.constructionType) {
+      const v = readString(a, fields.constructionType);
+      if (v) ctCount.set(v, (ctCount.get(v) ?? 0) + 1);
+    }
+    if (fields.roofType) {
+      const v = readString(a, fields.roofType);
+      if (v) roofCount.set(v, (roofCount.get(v) ?? 0) + 1);
+    }
+  }
+
+  const building: BuildingFacts = {};
+  if (years.length) building.year_built = Math.min(...years);
+  if (effYears.length) building.effective_year_built = Math.min(...effYears);
+  if (sqftCount) building.building_sqft = sqftSum;
+  if (storiesList.length) building.stories = Math.max(...storiesList);
+  if (bedCount) building.bedrooms = bedSum;
+  if (bathCount) building.bathrooms = bathSum;
+  if (ctCount.size) building.construction_type = mostCommon(ctCount);
+  if (roofCount.size) building.roof_type = mostCommon(roofCount);
+
+  return hasAnyKey(building) ? building : null;
+}
+
+/** Merge joined-table building data into the primary out object.
+ *  Primary wins on conflict — joined values fill gaps the primary
+ *  didn't populate. Re-flattens building-derived fields back to the
+ *  top-level legacy fields so chat-tools.ts (which reads the flat
+ *  shape) sees the joined data without changes. */
+export function mergeJoinedBuilding(
+  out: CACountyFacts,
+  joined: BuildingFacts,
+): void {
+  out.building = { ...joined, ...(out.building ?? {}) };
+  // Re-flatten the merged building to the legacy top-level fields.
+  // Don't overwrite fields the primary already populated.
+  if (out.building.year_built && !out.year_built) {
+    out.year_built = out.building.year_built;
+  }
+  if (out.building.building_sqft && !out.square_feet) {
+    out.square_feet = out.building.building_sqft;
+  }
+  if (out.building.units && !out.units) {
+    out.units = out.building.units;
+  }
+  if (out.building.construction_type && !out.construction_type) {
+    out.construction_type = out.building.construction_type;
+  }
+}
+
+function mostCommon<K>(counts: Map<K, number>): K {
+  let best: K | undefined;
+  let bestCount = -1;
+  for (const [k, c] of counts) {
+    if (c > bestCount) {
+      best = k;
+      bestCount = c;
+    }
+  }
+  // counts.size > 0 is the precondition — caller checks before invoking.
+  return best as K;
 }
 
 /* =========================================================================

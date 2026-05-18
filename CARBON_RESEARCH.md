@@ -60,7 +60,7 @@ geocoding (Google) → if CA + county in registry → county-direct ArcGIS
 
 | Provider | Coverage | Pricing | Carbon's verdict |
 |---|---|---|---|
-| **CA county-direct (ArcGIS REST)** | Per-county. **Registry: LA, San Diego, Orange, Riverside** (C.S.1.7.0a + C.S.1.7.0b). Pattern is a generic `arcgis-client.ts` + per-county field registry (`ca-county-registry.ts`). | Free (public-records data) | **Selected for CA Phase 1.** Direct integration avoids the third-party-aggregator coverage gaps that bit Carbon on Regrid (C.S.1.6.6/7) and Realie (C.S.1.6.8). Field scope is **insurance-tuned** (C.S.1.7.0b retune) — CRITICAL fields (use code, year built, building sqft, units, construction, stories) + USEFUL fields (effective year built, sprinklered, roof type, bed/bath). DROP-list (lot sqft, sale data, assessed value, tax-exempt) intentionally excluded. **CRITICAL coverage per county**: LA: ✅ all 5 + effective year + bed/bath. SD: 4 of 5 (no construction). Riverside: use desc only (year/sqft/units in joined table — future C.S.1.7.0c). OC: use code/desc only (no year/sqft/units published). Riverside + OC publish owner mailing — first CA counties in registry to do so. **SB skipped** — SB's public ArcGIS surfaces only geometry + APN; future sprint either pays for SB Esri portal access or routes SB through a different source. |
+| **CA county-direct (ArcGIS REST)** | Per-county. **Registry: LA, San Diego, Orange, Riverside** (C.S.1.7.0a + C.S.1.7.0b + C.S.1.7.0c). Pattern is a generic `arcgis-client.ts` + per-county field registry (`ca-county-registry.ts`). Some counties split data across a primary parcel layer and a joined characteristics table (see **Table-join pattern** below). | Free (public-records data) | **Selected for CA Phase 1.** Direct integration avoids the third-party-aggregator coverage gaps that bit Carbon on Regrid (C.S.1.6.6/7) and Realie (C.S.1.6.8). Field scope is **insurance-tuned** (C.S.1.7.0b retune) — CRITICAL fields (use code, year built, building sqft, units, construction, stories) + USEFUL fields (effective year built, sprinklered, roof type, bed/bath). DROP-list (lot sqft, sale data, assessed value, tax-exempt) intentionally excluded. **CRITICAL coverage per county after C.S.1.7.0c**: LA: ✅ all 5 + effective year + bed/bath. SD: 4 of 5 (no construction). **Riverside: ✅ year + sqft + construction + stories + bed/bath via the new CREST_PROPERTY_CHAR join (C.S.1.7.0c) — units still unmapped (encoded in CLASS_CODE string on primary layer).** OC: use code/desc only (no year/sqft/units published). Riverside + OC publish owner mailing — first CA counties in registry to do so. **SB skipped** — SB's public ArcGIS surfaces only geometry + APN; future sprint either pays for SB Esri portal access or routes SB through a different source. |
 | **Realie.ai** | Nationwide US property data | Free tier 25 req/month + $0.15/overage | **Selected as the non-CA + CA-fallback path** (C.S.1.6.8). Address Lookup endpoint. Returns thin shape for most CA addresses, which is why CA routes to county-direct first. |
 | **Google Geocoding API** | Worldwide addresses + lat/lng + structured address components | $5 per 1k geocodes after free tier | **Selected** — primary geocoder. The structured `address_components` parsing (street_number, route, locality, county, state) is what enables both Realie's required-field URL shape and the county-direct routing in C.S.1.7.0a. |
 | **Google Places API** | Address autocomplete, POI data | Free tier generous | **Selected** for chat input autocomplete. |
@@ -72,6 +72,42 @@ geocoding (Google) → if CA + county in registry → county-direct ArcGIS
 | Cape Analytics | COPE data + apartment Property Mapper | Enterprise contracts only | **Deferred to Phase 3** — upgrade target once placement volume justifies. |
 
 **Owner-data gap (important):** CA counties' public ArcGIS endpoints don't publish owner name or mailing address. LA County confirmed via direct probe (87 fields surfaced; zero owner fields). This is a privacy-driven policy choice — owner data is only accessible via the assessor's per-parcel captcha-protected portal. Carbon's chat enrichment doesn't need it (chat uses building specs to lead the asset-type confirmation); the marketing-export use case requires a separate source (see ATTOM/PropertyShark/LightBox row).
+
+### Table-join pattern — recurring CA assessor shape (C.S.1.7.0c)
+
+Several CA counties split parcel data across two ArcGIS layers: a **primary layer** with geometry + APN + a coarse use code, and a **joined characteristics table** keyed by APN that carries the underwriting-grade fields (year_built, square footage, stories, construction_type, etc.). The joined table is an `esriTable` (no geometry), reached via a where-clause query after the primary geometry query succeeds.
+
+**First wired user — Riverside County:**
+
+| Layer | Type | Purpose | Join field |
+|---|---|---|---|
+| PARCELS_CREST (MapServer/50) | FeatureServer | Geometry, APN, CLASS_CODE (already-readable string), owner mailing | `APN` |
+| CREST_PROPERTY_CHAR (MapServer/80) | esriTable | YEAR_BUILT, LIVING_AREA, NUMBER_OF_STORIES, CONSTRUCTION_TYPE, BEDROOM_COUNT, BATH_COUNT, ROOF_TYPE | `PIN` (== primary APN) |
+
+**Per-asset-class field-fill matrix on CREST_PROPERTY_CHAR (live-probed):**
+
+| Field | SFR | Apartment | Commercial |
+|---|---|---|---|
+| YEAR_BUILT | ✓ | ✓ | ✓ |
+| LIVING_AREA (sqft) | ✓ | ✗ null | ✗ null |
+| NUMBER_OF_STORIES | ✓ | ✓ | ✓ |
+| CONSTRUCTION_TYPE | ✓ | ✓ | ✓ |
+| BEDROOM_COUNT / BATH_COUNT | ✓ | ✗ null | ✗ null |
+| ROOF_TYPE | ✓ | ✗ blank | ✗ blank |
+
+Units intentionally NOT mapped — CREST_PROPERTY_CHAR doesn't publish a unit-count field. Riverside encodes apartment unit ranges in CLASS_CODE on the primary layer ("Apartment 21 - 40 Units" / "Apartment Over 100 Units"); Carbon's chat reads the CLASS_CODE-derived use_desc and asks the user for an exact count when needed.
+
+**Multi-row aggregation** — a single parcel can have many building rows in the joined table (live-probed: 22 rows for a 100+ unit Corona apartment complex). `fetchCACounty` aggregates insurance-tuned:
+
+- `year_built` / `effective_year_built` → MIN (oldest = highest risk)
+- `building_sqft` → SUM (total under-roof area)
+- `stories` → MAX (tallest = drives fire/egress)
+- `construction_type` / `roof_type` → MODE (most common across rows)
+- `bedrooms` / `bathrooms` → SUM (whole-parcel total)
+
+**Other CA counties likely to use this pattern** (verified shape, not yet wired): San Bernardino's `cAESGISTable` MapServer/3 has APN+geometry only — a private characteristics table may exist behind staff auth (out of scope for Carbon Phase 1). LA County's setup is the opposite — everything (87 fields including up to 5 sub-buildings per parcel as YearBuilt1..5 etc.) lives in the single primary layer, so no join is needed. SD and OC are also single-layer.
+
+**Graceful degradation:** if the joined query fails (502, parse error, zero rows), the primary data still ships. The `[carbon-enrich] ARCGIS_*` logs surface the failure for debug without crashing the user flow.
 
 ## Per-conversation cost model (Carbon's chat as of C.S.1.6)
 
