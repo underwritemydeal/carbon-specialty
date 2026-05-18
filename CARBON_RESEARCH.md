@@ -146,6 +146,22 @@ The second supported county-data client. Some CA counties (and most major US mun
 
 **Where Socrata may be useful next:** NYC OpenData (PLUTO/MapPLUTO is on Socrata), Chicago Data Portal, Seattle GeoData, Maryland Property Records — all use the same SoQL API shape. Adding any of these = single registry entry + reusing `querySocrataDataset`.
 
+### Construction-code reliability — C.S.1.7.0e sanity layer
+
+County assessor construction codes are often decades stale for commercial properties. The canonical case Carbon hit in C.S.1.7.0d post-deploy: **550 California Street, San Francisco** — a 13-story FiDi office tower coded `construction_type="D"` in the 2024 SF Tax Rolls, which the registry's `constructionTypeMap` translates to "Wood Frame (Type V)". A 13-story Type-V wood-frame building is physically impossible under IBC building-code constraints (Type V tops out at ~5-6 stories of CA podium construction). Without a guard, the chat would confidently surface that string and an underwriter reading the conversation would flag the broker as untrained.
+
+`src/lib/construction-sanity.ts` (C.S.1.7.0e) implements three IBC-physics rules:
+
+1. **stories ≥ 7 AND construction includes "Wood Frame"** → suppress. CA podium-construction wood frame tops out at 5-6 stories; 7+ wood-frame Type V is essentially non-existent.
+2. **stories ≥ 10 AND construction includes "Heavy Timber"** → suppress. Type III caps at ~9 stories even with modern mass-timber engineering.
+3. **stories ≥ 12 AND construction contains a recognizable lower-type marker** (`type ii/iii/iv/v`, `wood frame`, `heavy timber`, `non-combustible`, `unknown`) → suppress. High-rises are virtually always Type I or Steel Frame.
+
+Unrecognized raw codes (LA's `DesignType1=0500` composites, county-internal numerics) pass through unchanged — Carbon can't claim they're wrong without knowing what they mean.
+
+When a rule fires, the building's `construction_type` is cleared on both the grouped and flat shapes, and `building.constructionTypeFlag = "unreliable_county_data"` is set. `chat-tools.ts` surfaces this to the model with a directive to ask the user for the actual construction type. The system prompt directs the chat to **ask, not guess** — county roll staleness is a data problem, not a knowledge gap to bluff over.
+
+Sanity check applies in `fetchCACounty` (both the ArcGIS path and the Socrata SF path). Realie's flat path doesn't carry `stories`, so the check is effectively no-op there; if Realie ever exposes a stories field the check will start firing on Realie data too without code changes.
+
 ## Per-conversation cost model (Carbon's chat as of C.S.1.6)
 
 - LLM cost: $0.05-0.15 per chat (Haiku 4.5, prompt cached on system block)

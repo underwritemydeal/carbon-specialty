@@ -104,6 +104,13 @@ export interface BuildingFacts {
    *  + ISO class. LA uses DesignType + QualityClass composite;
    *  Realie uses constructionType. */
   construction_type?: string;
+  /** Set by the C.S.1.7.0e sanity-check layer when the county-published
+   *  construction code fails an IBC-physics check against the building's
+   *  height (e.g. 12-story "Wood Frame" — physically impossible). When
+   *  set, `construction_type` is cleared and chat asks the user for the
+   *  actual construction type. Single value today; expandable to other
+   *  reliability flags later. */
+  constructionTypeFlag?: "unreliable_county_data";
   /** Sprinklered flag. USEFUL — affects fire-rate pricing. Not
    *  typically published by CA assessors; field exists so future
    *  inspection-data sources can fill it. */

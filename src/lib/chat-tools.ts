@@ -122,7 +122,16 @@ async function executeEnrichProperty(
       lines.push(`Effective year built (post-rehab): ${data.building.effective_year_built}`);
     }
     if (typeof data.square_feet === "number") lines.push(`Square feet: ${data.square_feet}`);
-    if (data.construction_type) lines.push(`Construction: ${data.construction_type}`);
+    if (data.construction_type) {
+      lines.push(`Construction: ${data.construction_type}`);
+    } else if (data.building?.constructionTypeFlag === "unreliable_county_data") {
+      // C.S.1.7.0e sanity-check fired — the county code didn't match
+      // the building's height (e.g. 13-story wood frame). Tell the
+      // model to ask the user directly instead of guessing.
+      lines.push(
+        `Construction: county records flagged unreliable for this building's height — ask the user for the actual construction type (wood frame, steel frame, reinforced concrete, masonry, etc.).`,
+      );
+    }
     if (typeof data.building?.stories === "number") lines.push(`Stories: ${data.building.stories}`);
     if (typeof data.building?.sprinklered === "boolean") {
       lines.push(`Sprinklered: ${data.building.sprinklered ? "yes" : "no"}`);

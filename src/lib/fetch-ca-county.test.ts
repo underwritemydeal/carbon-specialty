@@ -990,6 +990,69 @@ describe("fetchCACounty — SF dispatch (Socrata client, C.S.1.7.0d)", () => {
     expect(url).not.toContain("FeatureServer");
     expect(url).not.toContain("services3.arcgis.com");
   });
+
+  // C.S.1.7.0e — sanity check integration. SF is the canonical
+  // target: 550 California Street (13 stories) is coded "D" → "Wood
+  // Frame (Type V)" in the 2024 roll. Without the sanity check the
+  // chat would surface that. With it, construction is suppressed +
+  // flagged so chat asks the user.
+  it("suppresses construction + sets flag for 550 California (13-story 'Wood Frame')", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        {
+          parcel_number: "0240020",
+          property_location: "0000 0550 CALIFORNIA          ST0000",
+          use_code: "COMO",
+          use_definition: "Commercial Office",
+          year_property_built: "1960",
+          number_of_units: "0",
+          property_area: "332672.0",
+          construction_type: "D", // → "Wood Frame (Type V)" via map
+          number_of_stories: "13.0", // physically inconsistent
+        },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(
+      37.792879,
+      -122.403677,
+      "San Francisco County",
+    );
+
+    // Sanity check suppressed the construction strings on both shapes
+    expect(out?.building?.construction_type).toBeUndefined();
+    expect(out?.construction_type).toBeUndefined();
+    // Flag explains why
+    expect(out?.building?.constructionTypeFlag).toBe("unreliable_county_data");
+    // Other CRITICAL fields still ship — sanity check is targeted
+    expect(out?.year_built).toBe(1960);
+    expect(out?.square_feet).toBe(332672);
+    expect(out?.building?.stories).toBe(13);
+    expect(out?.land_use_desc).toBe("Commercial Office");
+  });
+
+  it("preserves construction on 3-story Mission multifamily (3300 17th St)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      socrataResponse([
+        {
+          parcel_number: "3569016A",
+          use_code: "MRES",
+          use_definition: "Multi-Family Residential",
+          year_property_built: "1906",
+          number_of_units: "3.0",
+          property_area: "5290.0",
+          construction_type: "D",
+          number_of_stories: "3.0",
+        },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const out = await fetchCACounty(37.763443, -122.419546, "San Francisco County");
+    expect(out?.construction_type).toBe("Wood Frame (Type V)");
+    expect(out?.building?.constructionTypeFlag).toBeUndefined();
+  });
 });
 
 describe("normalizeCountyFeature — Riverside County", () => {
