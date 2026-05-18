@@ -184,7 +184,9 @@ export function Hero() {
           </nav>
 
           {/* Mobile hamburger — only renders ≤960px (nav hidden). Routes
-              users to /contact as the simplest mobile menu fallback. */}
+              users to /contact as the simplest mobile menu fallback.
+              At ≤480px it widens to a 44×44 tap target and pulls flush
+              to the right safe-area inset (sprint C.S.1.6.2). */}
           <Link
             href="/contact"
             aria-label="Open menu"
@@ -232,7 +234,10 @@ export function Hero() {
           </Link>
         </header>
 
-        {/* EYEBROW ROW — paper text on video, hairline rule below at 30% */}
+        {/* EYEBROW ROW — paper text on video, hairline rule below at 30%.
+            At ≤480px the row tightens (status line sits at half the
+            current vertical air below the section number) and the
+            hairline switches to pine, 1px (sprint C.S.1.6.2). */}
         <div
           className="hero-eyebrow grid-12"
           style={{
@@ -374,6 +379,30 @@ export function Hero() {
           .hero-eyebrow .hero-eyebrow-left,
           .hero-eyebrow .hero-eyebrow-right { grid-column: 1 / -1 !important; justify-content: flex-start !important; }
           .hero-eyebrow .hero-eyebrow-right { margin-top: 6px; }
+        }
+
+        /* C.S.1.6.2 — Mobile masthead polish at ≤480px.
+           - Eyebrow row tightens: padding-top + margin-top halved so
+             the status line sits at half the current vertical air below
+             "00 — GET A QUOTE".
+           - Hairline rule under the masthead switches to pine, 1px.
+           - The Carbon/status status line itself loses its 6px gap
+             above (was added at ≤600px) — already tight enough.
+           - Hamburger widens to a 44×44 tap target and pulls flush
+             to the right safe-area inset (so it sits at the screen
+             edge on notched devices). */
+        @media (max-width: 480px) {
+          .hero-eyebrow {
+            padding-top: 10px !important;
+            margin-top: 8px !important;
+            border-top: 1px solid var(--ember) !important;
+          }
+          .hero-eyebrow .hero-eyebrow-right { margin-top: 3px !important; }
+          .hero-hamburger {
+            width: 44px !important;
+            height: 44px !important;
+            margin-right: calc(-1 * var(--gutter-sm) + env(safe-area-inset-right, 0px));
+          }
         }
       `}</style>
     </section>

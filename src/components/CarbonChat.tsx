@@ -13,6 +13,13 @@ import {
 } from "@/lib/carbon-intake";
 import { INTAKE_WRAPUP_SENTINEL } from "@/lib/carbon-system-prompt";
 import { loadGooglePlaces } from "@/lib/google-places-loader";
+import {
+  getSpeechRecognitionCtor,
+  isSpeechRecognitionSupported,
+  playTTS,
+  stopTTS,
+  type SpeechRecognitionLike,
+} from "@/lib/voice-client";
 import { track } from "@/lib/analytics";
 
 const INITIAL_GREETING = `Hi — I'm Carbon, the AI intake specialist at Carbon Specialty Insurance.
@@ -68,9 +75,93 @@ export function CarbonChat({
   const placesTeardownRef = useRef<(() => void) | null>(null);
   const [autocompleteEnabled, setAutocompleteEnabled] = useState(true);
 
+  // C.S.1.6.2 — Voice UX. STT via Web Speech API; TTS via /api/tts.
+  //
+  //   voiceSupported    — null until the browser-side feature probe runs.
+  //                       false on iOS Chrome and any non-Webkit/Blink
+  //                       browser without SpeechRecognition.
+  //   listening         — mic is actively transcribing.
+  //   interim           — non-final words from the current recognition pass.
+  //                       Rendered over the textarea at opacity 0.6.
+  //   voiceTurns        — message indices (user AND assistant) belonging
+  //                       to a voice-initiated turn. Carbon replies in this
+  //                       set auto-play; replies NOT in it render LISTEN.
+  //                       Kept in state (not a ref) so render-time reads
+  //                       in the Message list are reactive.
+  //   autoPlayedRef     — assistant indices we've already auto-played, so
+  //                       a re-render doesn't replay the same line.
+  //   manualPlaying     — assistant index currently being played via the
+  //                       LISTEN affordance (renders pine while active).
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [manualPlaying, setManualPlaying] = useState<number | null>(null);
+  const [voiceTurns, setVoiceTurns] = useState<ReadonlySet<number>>(() => new Set());
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceCommittedRef = useRef<string>("");
+  const inputRefForVoice = useRef<string>("");
+  const nextTurnVoiceRef = useRef<boolean>(false);
+  const autoPlayedRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, thinking, mode]);
+
+  // C.S.1.6.2 — Browser-side feature probe for the Web Speech API.
+  // Runs once on mount. We never render the mic button until this
+  // resolves to keep the SSR snapshot and the post-hydration UI in
+  // sync (SpeechRecognition isn't defined on the server). Effect-as-
+  // probe is the correct shape here — we're syncing an external
+  // platform capability into React state.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVoiceSupported(isSpeechRecognitionSupported());
+  }, []);
+
+  // C.S.1.6.2 — Keep a ref of the current input value so the
+  // recognition `onresult` handler (which closes over stale state)
+  // appends to the live committed text.
+  useEffect(() => {
+    inputRefForVoice.current = input;
+  }, [input]);
+
+  // C.S.1.6.2 — Tear down any active recognition + audio playback when
+  // the chat panel closes. Without this, mic stays hot in the background
+  // and TTS keeps playing after the user dismisses the panel. Effect-as-
+  // cleanup correctly stops the SpeechRecognition + Audio externals; the
+  // setState calls just reflect that cleanup back into React.
+  useEffect(() => {
+    if (open) return;
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // ignore
+    }
+    recognitionRef.current = null;
+    stopTTS();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setListening(false);
+    setInterim("");
+    setManualPlaying(null);
+  }, [open]);
+
+  // C.S.1.6.2 — Auto-play TTS for assistant messages that belong to a
+  // voice-initiated turn. Fires once per message. Failures (key missing,
+  // 503, iOS autoplay block on edge cases) are swallowed silently —
+  // voice is a polish layer, not core to the chat working.
+  useEffect(() => {
+    const last = messages.length - 1;
+    if (last < 0) return;
+    const m = messages[last];
+    if (m.role !== "assistant") return;
+    if (!voiceTurns.has(last)) return;
+    if (autoPlayedRef.current.has(last)) return;
+    autoPlayedRef.current.add(last);
+    track("cs_chat_tts_autoplay", { index: last });
+    playTTS(m.content).catch((e) => {
+      console.warn("[carbon-chat] TTS autoplay failed:", e);
+    });
+  }, [messages, voiceTurns]);
 
   useEffect(() => {
     if (open) {
@@ -179,8 +270,21 @@ export function CarbonChat({
       setError(null);
       const userMsg: ChatMessage = { role: "user", content: text };
       const history = [...messages, userMsg];
+      const userIndex = history.length - 1;
+      // C.S.1.6.2 — consume the voice flag for THIS turn (set by send()
+      // when the textarea contained mic-derived text). The assistant's
+      // reply index gets added once we know it.
+      const voiceTurn = nextTurnVoiceRef.current;
+      nextTurnVoiceRef.current = false;
+      if (voiceTurn) {
+        setVoiceTurns((prev) => {
+          const next = new Set(prev);
+          next.add(userIndex);
+          return next;
+        });
+      }
       setMessages(history);
-      track("cs_chat_user_message", { length: text.length });
+      track("cs_chat_user_message", { length: text.length, voice: voiceTurn });
       setThinking(true);
       setPropertyLookup(looksLikeAddress(text));
 
@@ -239,6 +343,18 @@ export function CarbonChat({
 
       const reply = result.text;
       const after: ChatMessage[] = [...history, { role: "assistant", content: reply }];
+      // C.S.1.6.2 — mark the assistant index as part of the voice turn
+      // BEFORE setMessages so the auto-play effect (which depends on
+      // both `messages` and `voiceTurns`) sees the flag set when it
+      // observes the new message.
+      if (voiceTurn) {
+        const assistantIndex = after.length - 1;
+        setVoiceTurns((prev) => {
+          const next = new Set(prev);
+          next.add(assistantIndex);
+          return next;
+        });
+      }
       setMessages(after);
       setThinking(false);
       setPropertyLookup(false);
@@ -291,11 +407,125 @@ export function CarbonChat({
   }, [open, initialMessage]);
 
   const send = () => {
-    const text = input.trim();
+    // If the mic is hot when the user hits send, stop recording first
+    // so the final transcript flushes into `input` before we read it.
+    if (listening) stopListening();
+    const text = (listening ? `${input}${interim ? " " + interim : ""}` : input).trim();
     if (!text || thinking || mode !== "chat") return;
     setInput("");
+    setInterim("");
     sendMessage(text);
   };
+
+  // -------------------------------------------------------------------------
+  // C.S.1.6.2 — Voice input (Web Speech API). Tap mic to start, tap again
+  // to stop. Continuous + interim results. We never auto-submit; the user
+  // reviews and presses send.
+  // -------------------------------------------------------------------------
+  const stopListening = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // ignore — Webkit throws if stop() races with onend
+    }
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (listening) return;
+    if (!isSpeechRecognitionSupported()) return;
+    let Ctor: new () => SpeechRecognitionLike;
+    try {
+      Ctor = getSpeechRecognitionCtor();
+    } catch {
+      setVoiceSupported(false);
+      return;
+    }
+    const rec = new Ctor();
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    voiceCommittedRef.current = inputRefForVoice.current;
+
+    rec.onresult = (event) => {
+      let nextInterim = "";
+      let appended = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) appended += transcript;
+        else nextInterim += transcript;
+      }
+      if (appended) {
+        const base = voiceCommittedRef.current;
+        const next = `${base}${base && !base.endsWith(" ") ? " " : ""}${appended}`.trim();
+        voiceCommittedRef.current = next;
+        setInput(next);
+        inputRefForVoice.current = next;
+      }
+      setInterim(nextInterim.trim());
+    };
+    rec.onerror = (event) => {
+      // "no-speech" / "aborted" are routine — silent. Everything else logs.
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        console.warn("[carbon-chat] STT error:", event.error, event.message);
+      }
+    };
+    rec.onend = () => {
+      // Commit any trailing interim to the input, then drop state.
+      // Functional setter so we read the live interim, not a stale
+      // closure from when the recognition started.
+      setInterim((current) => {
+        if (current.trim().length > 0) {
+          const base = voiceCommittedRef.current;
+          const next = `${base}${base && !base.endsWith(" ") ? " " : ""}${current}`.trim();
+          voiceCommittedRef.current = next;
+          setInput(next);
+          inputRefForVoice.current = next;
+        }
+        return "";
+      });
+      setListening(false);
+      recognitionRef.current = null;
+    };
+
+    try {
+      rec.start();
+    } catch (e) {
+      console.warn("[carbon-chat] STT start failed:", e);
+      return;
+    }
+    recognitionRef.current = rec;
+    setListening(true);
+    // C.S.1.6.2 — every send made while the mic is hot, or made from
+    // text the mic committed, counts as a voice turn so Carbon's reply
+    // auto-plays. Reset on send().
+    nextTurnVoiceRef.current = true;
+    track("cs_chat_mic_start");
+  }, [listening]);
+
+  const toggleMic = useCallback(() => {
+    if (listening) stopListening();
+    else startListening();
+  }, [listening, startListening, stopListening]);
+
+  // -------------------------------------------------------------------------
+  // C.S.1.6.2 — Manual "LISTEN →" playback for text-initiated assistant
+  // messages. Tap-to-play; replaces any audio currently playing.
+  // -------------------------------------------------------------------------
+  const playMessage = useCallback(async (index: number, content: string) => {
+    setManualPlaying(index);
+    track("cs_chat_tts_manual", { index });
+    try {
+      await playTTS(content);
+    } catch (e) {
+      console.warn("[carbon-chat] TTS manual play failed:", e);
+    } finally {
+      setManualPlaying((curr) => (curr === index ? null : curr));
+    }
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -305,10 +535,17 @@ export function CarbonChat({
   };
 
   const reset = () => {
+    if (listening) stopListening();
+    stopTTS();
     setMessages(INITIAL_MESSAGES);
     setError(null);
     setSubmitted(false);
     setMode("chat");
+    setInterim("");
+    setManualPlaying(null);
+    setVoiceTurns(new Set());
+    autoPlayedRef.current = new Set();
+    nextTurnVoiceRef.current = false;
     referenceRef.current = generateReferenceId();
     // Reset fully — including the first-message autocomplete.
     setAutocompleteEnabled(true);
@@ -460,7 +697,22 @@ export function CarbonChat({
           }}
         >
           {messages.map((m, i) => (
-            <Message key={i} role={m.role} content={m.content} />
+            <Message
+              key={i}
+              role={m.role}
+              content={m.content}
+              // LISTEN affordance: every Carbon message that wasn't
+              // already part of a voice turn (i.e. text-initiated).
+              // TTS support is gated on voiceSupported !== false so the
+              // affordance still appears on iOS Chrome (TTS works even
+              // when STT doesn't); we only hide it if /api/tts has
+              // definitively failed via the manualPlaying path.
+              showListen={
+                m.role === "assistant" && !voiceTurns.has(i) && voiceSupported !== null
+              }
+              playing={manualPlaying === i}
+              onListen={() => playMessage(i, m.content)}
+            />
           ))}
           {thinking && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -561,8 +813,41 @@ export function CarbonChat({
                     color: "var(--ink)",
                     minHeight: 24,
                     maxHeight: 160,
+                    // While interim transcript is in flight, mask the
+                    // textarea's own text — the overlay below renders
+                    // the committed input plus the interim portion at
+                    // opacity 0.6. Caret-color stays ink so the cursor
+                    // is still visible.
+                    ...(listening && interim
+                      ? { color: "transparent", caretColor: "var(--ink)" as const }
+                      : {}),
                   }}
                 />
+                {/* C.S.1.6.2 — Interim transcript overlay. Mirrors the
+                    textarea geometry exactly so the committed text
+                    aligns under-glass; the interim portion renders at
+                    opacity 0.6 to read as a not-yet-committed preview. */}
+                {listening && interim && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      padding: "8px 0",
+                      fontFamily: "var(--font-body)",
+                      fontSize: 15,
+                      lineHeight: 1.4,
+                      color: "var(--ink)",
+                      pointerEvents: "none",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {input}
+                    {input && !input.endsWith(" ") ? " " : ""}
+                    <span style={{ opacity: 0.6 }}>{interim}</span>
+                  </div>
+                )}
                 {/* C.S.1.6.1 — Places Autocomplete attaches to <input>
                     only. Hidden input sized to the textarea so the
                     .pac-container anchors at the right bounding box. */}
@@ -588,6 +873,50 @@ export function CarbonChat({
                   />
                 )}
               </div>
+              {/* C.S.1.6.2 — Mic button (Web Speech API). Renders only
+                  after the browser-side probe confirms support, so the
+                  SSR snapshot never paints a control the runtime can't
+                  honor. Ink stroke at rest, pine fill when active. */}
+              {voiceSupported && (
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  disabled={thinking}
+                  aria-label={listening ? "Stop dictation" : "Dictate your reply"}
+                  aria-pressed={listening}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    padding: 0,
+                    border: `1px solid ${listening ? "var(--ember)" : "var(--ink)"}`,
+                    background: listening ? "var(--ember)" : "transparent",
+                    color: listening ? "var(--paper)" : "var(--ink)",
+                    cursor: thinking ? "not-allowed" : "pointer",
+                    borderRadius: 0,
+                    transition:
+                      "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease)",
+                  }}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill={listening ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={listening ? 0 : 1.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <rect x="9" y="3" width="6" height="12" rx="3" />
+                    <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeWidth={1.5} />
+                    <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" strokeWidth={1.5} />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={send}
                 disabled={!input.trim() || thinking}
@@ -614,6 +943,24 @@ export function CarbonChat({
                 </svg>
               </button>
             </div>
+            {/* C.S.1.6.2 — Unsupported-browser caption. Primarily iOS
+                Chrome, which uses WebKit but doesn't expose
+                webkitSpeechRecognition. Renders only after the probe
+                has run, so it never flashes during hydration. */}
+            {voiceSupported === false && (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-3)",
+                }}
+              >
+                Voice input — Safari or Chrome desktop
+              </div>
+            )}
             <div
               style={{
                 marginTop: 10,
@@ -803,7 +1150,19 @@ function FormField({
   );
 }
 
-function Message({ role, content }: { role: "user" | "assistant"; content: string }) {
+function Message({
+  role,
+  content,
+  showListen = false,
+  playing = false,
+  onListen,
+}: {
+  role: "user" | "assistant";
+  content: string;
+  showListen?: boolean;
+  playing?: boolean;
+  onListen?: () => void;
+}) {
   const isAgent = role === "assistant";
   return (
     <div
@@ -839,6 +1198,35 @@ function Message({ role, content }: { role: "user" | "assistant"; content: strin
       >
         {content}
       </div>
+      {/* C.S.1.6.2 — LISTEN affordance for text-initiated Carbon
+          messages. Tap to play the Inworld TTS rendering. Pine while
+          playing so the playback state is visible at a glance. */}
+      {isAgent && showListen && onListen && (
+        <button
+          type="button"
+          onClick={onListen}
+          disabled={playing}
+          aria-label={playing ? "Playing audio" : "Listen to this message"}
+          style={{
+            marginTop: 2,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: 0,
+            background: "transparent",
+            border: 0,
+            color: playing ? "var(--ember)" : "var(--ink-3)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            cursor: playing ? "default" : "pointer",
+            transition: "color var(--dur-fast) var(--ease)",
+          }}
+        >
+          {playing ? "Playing…" : "Listen →"}
+        </button>
+      )}
     </div>
   );
 }

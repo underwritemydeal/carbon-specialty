@@ -99,6 +99,7 @@ export function HeroLede() {
             Real estate insurance for multifamily, mixed-use, SFR portfolios, HOAs, and
             apartment buildings.{" "}
             <em
+              className="hero-lede-five-unit"
               style={{
                 fontFamily: "var(--font-display)",
                 fontStyle: "italic",
@@ -276,6 +277,17 @@ export function HeroLede() {
         @media (max-width: 1024px) { .hero-lede-section { padding: 64px 0 96px; } }
         @media (max-width: 600px)  { .hero-lede-section { padding: 48px 0 64px; } }
         .chat-secondary:hover { border-bottom-color: var(--ember) !important; color: var(--ink) !important; }
+
+        /* C.S.1.6.2 — Mobile rhythm + accent polish at ≤480px.
+           Hero-to-lede top padding tightens by ~25% (48 → 36) so the
+           transition from full-bleed video into the lede paragraph
+           reads as one continuous editorial moment, not two stacked
+           sections. The "Five-unit walk-ups" italic shifts to pine
+           as a brand accent in the lede. */
+        @media (max-width: 480px) {
+          .hero-lede-section { padding-top: 36px !important; }
+          .hero-lede-five-unit { color: var(--ember) !important; }
+        }
       `}</style>
     </section>
   );
