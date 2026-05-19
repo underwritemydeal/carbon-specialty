@@ -26,14 +26,16 @@
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string };
 
-/** C.S.1.7.0j — handoff trigger categories. When the intake prompt
- *  fires a hard-handoff, the extraction step encodes the reason here
- *  so the specialist queue email surfaces it prominently. */
+/** C.S.1.7.0j → C.S.1.7.0k — handoff trigger categories. When the
+ *  intake prompt fires a hard-handoff, the extraction step encodes the
+ *  reason here so the specialist queue email surfaces it prominently.
+ *  C.S.1.7.0k added `out_of_appetite` (5th trigger). */
 export type HandoffReason =
   | "coverage_interpretation"
   | "portfolio_tiv_over_10m"
   | "active_loss"
-  | "litigation_pending";
+  | "litigation_pending"
+  | "out_of_appetite";
 
 /** C.S.1.7.0j — coverage scope the prospect is requesting. */
 export type CoverageScope =
@@ -218,6 +220,10 @@ interface ChatEnvelope {
   text?: string;
   tools_executed?: string[];
   property_facts?: unknown;
+  disclaimers_applied?: string[];
+  /** Extract-mode only — the structured CarbonIntakePayload returned
+   *  directly off the model's forced tool-use args. */
+  payload?: Record<string, unknown>;
   error?: string;
   error_kind?:
     | "BAD_REQUEST"
@@ -225,17 +231,23 @@ interface ChatEnvelope {
     | "ANTHROPIC_RATE_LIMIT"
     | "ANTHROPIC_SERVER"
     | "TOOL_EXECUTION_FAIL"
-    | "LOOP_EXHAUSTED";
+    | "LOOP_EXHAUSTED"
+    | "EXTRACT_NO_TOOL_USE";
 }
 
 /**
- * Posts to the in-app /api/chat route and returns the assistant text.
- * Throws `ChatError` so callers can retry or fall back deterministically.
+ * Posts to the in-app /api/chat route. Returns either the assistant
+ * text (intake mode) or the structured payload (extract mode) depending
+ * on which mode was requested. Throws `ChatError` on failure.
  */
 async function callChat(payload: {
   messages: ChatMessage[];
   mode: "intake" | "extract";
-}): Promise<{ text: string; toolsExecuted: string[] }> {
+}): Promise<{
+  text: string;
+  toolsExecuted: string[];
+  payload?: Record<string, unknown>;
+}> {
   let res: Response;
   try {
     res = await fetch("/api/chat", {
@@ -269,14 +281,24 @@ async function callChat(payload: {
     if (kind === "TOOL_EXECUTION_FAIL") {
       throw new ChatError("tool-fail", data.error ?? "Tool execution failed");
     }
-    // ANTHROPIC_SERVER, LOOP_EXHAUSTED, unknown → treat as server
+    // ANTHROPIC_SERVER, LOOP_EXHAUSTED, EXTRACT_NO_TOOL_USE, unknown → treat as server
     throw new ChatError(
       "server",
       data.error ?? `Chat service returned HTTP ${res.status}`,
     );
   }
 
+  // Extract mode returns a structured payload, not text. Intake mode
+  // returns text. Allow either; the caller decides which to use.
   const text = typeof data.text === "string" ? data.text : "";
+  const structured =
+    data.payload && typeof data.payload === "object" ? data.payload : undefined;
+
+  if (payload.mode === "extract") {
+    if (!structured) throw new ChatError("bad-shape", "Extract returned no structured payload");
+    return { text: "", toolsExecuted: data.tools_executed ?? [], payload: structured };
+  }
+
   if (!text) throw new ChatError("bad-shape", "Chat returned empty text");
   return { text, toolsExecuted: data.tools_executed ?? [] };
 }
@@ -296,10 +318,10 @@ export async function askCarbonIntake(
 }
 
 /** Runs the extraction call. Sends the full transcript as one user message
- *  with mode: "extract" so /api/chat uses the extraction system prompt
- *  and skips the tool registry. Parses the JSON response and returns
- *  the structured payload (without the conversation_full / source /
- *  timestamp envelope — caller adds those). Throws ChatError on bad
+ *  with mode: "extract" so /api/chat forces a tool-use of `extract_intake`
+ *  and returns the structured CarbonIntakePayload directly off the
+ *  model's tool args. No JSON parsing on the client — the route reads
+ *  tool_use.input and returns it as `payload`. Throws ChatError on bad
  *  shape. */
 export async function extractIntakePayload(
   history: ChatMessage[],
@@ -308,29 +330,17 @@ export async function extractIntakePayload(
     .map((m) => `[${m.role}] ${m.content}`)
     .join("\n\n");
 
-  const { text: raw } = await callChat({
+  const { payload: structured } = await callChat({
     mode: "extract",
     messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
   });
 
-  // Strip code fences if the model wrapped its output despite instructions.
-  const cleaned = raw
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/i, "")
-    .trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new ChatError("bad-shape", "Extraction did not return parseable JSON");
-  }
-  if (!parsed || typeof parsed !== "object") {
-    throw new ChatError("bad-shape", "Extraction returned non-object JSON");
+  if (!structured) {
+    throw new ChatError("bad-shape", "Extraction returned no structured payload");
   }
 
   // Conservatively normalize: ensure asset_type, location, contact exist.
-  const p = parsed as Record<string, unknown>;
+  const p = structured;
   const out: Omit<
     CarbonIntakePayload,
     "conversation_full" | "source" | "submitted_at" | "reference_id"

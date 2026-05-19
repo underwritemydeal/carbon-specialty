@@ -1,18 +1,24 @@
 /**
- * Chat tools — sprint C.S.1.6.
+ * Chat tools — sprint C.S.1.6 / extended C.S.1.7.0k.
  *
  * Registry of tools the Anthropic Messages API can call when handling
- * the Carbon intake conversation. Currently one tool — `enrich_property`
- * — but the dispatcher is structured so adding more tools (rate-band
- * lookup in C.S.1.7, lead-extraction-as-tool in the same sprint, etc.)
- * is one switch case.
+ * the Carbon intake conversation. Two tools today:
  *
- * Tool implementations run server-side inside the /api/chat route on
- * the same Vercel deployment, so they reach the rest of the app via
- * the request's origin URL (an internal HTTP hop, not a direct module
- * import). The HTTP boundary is intentional — it keeps the tools
- * independently testable and would survive a future move to a separate
- * service without touching the chat route.
+ *   enrich_property — server-executed lookup. The route hits an internal
+ *                     HTTP endpoint (/api/property/enrich) and returns
+ *                     the composed PropertyFacts as the tool result.
+ *
+ *   extract_intake  — model-only "tool". The model's `tool_use.input`
+ *                     IS the structured CarbonIntakePayload. There is
+ *                     no server-side execution — the route reads the
+ *                     args directly off the message and returns. This
+ *                     replaces the C.S.1.7.0j second-LLM-call extract
+ *                     mode with a forced tool-use against a schema.
+ *
+ * The TOOLS export is the intake-mode tool list (enrich_property only —
+ * extract_intake would only confuse the conversational flow). The
+ * EXTRACT_TOOLS export is the extract-mode list (extract_intake only,
+ * used with tool_choice to force structured output).
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
@@ -20,7 +26,9 @@ import type { PropertyFacts } from "./property-facts";
 
 export type ToolDefinition = Anthropic.Tool;
 
-/** Public tool catalog passed to the model on every request. */
+/** The intake-mode tool catalog. Passed to the model on every intake
+ *  turn. `extract_intake` is deliberately NOT in this list — exposing
+ *  it during intake would let the model end the conversation early. */
 export const TOOLS: ToolDefinition[] = [
   {
     name: "enrich_property",
@@ -39,6 +47,135 @@ export const TOOLS: ToolDefinition[] = [
     },
   },
 ];
+
+/* =========================================================================
+ * extract_intake — C.S.1.7.0k structured-extraction tool
+ *
+ * The model is forced to call this exactly once with the structured
+ * CarbonIntakePayload. The route reads `tool_use.input` and returns it
+ * verbatim to the client; there is no server-side execution. Forced
+ * tool-use eliminates the JSON-parsing failure mode the C.S.1.7.0j
+ * second LLM call ran into when the model wrapped its output in
+ * markdown fences or trailing prose.
+ *
+ * The input_schema mirrors the documentation block in
+ * CARBON_EXTRACTION_SYSTEM_PROMPT (carbon-system-prompt.ts). Both must
+ * be updated together when the payload shape changes.
+ * ========================================================================= */
+
+export const EXTRACT_INTAKE_TOOL_NAME = "extract_intake" as const;
+
+const PERIL_INTEREST_ENUM = ["currently_carry", "looking_to_add", "not_interested", "unknown"] as const;
+
+export const EXTRACT_INTAKE_TOOL: ToolDefinition = {
+  name: EXTRACT_INTAKE_TOOL_NAME,
+  description:
+    "Emit the structured CarbonIntakePayload from the intake transcript. Call exactly once. All fields except asset_type, location, and contact are optional — omit fields the prospect did not cover.",
+  input_schema: {
+    type: "object",
+    properties: {
+      asset_type: {
+        type: "string",
+        enum: [
+          "multifamily",
+          "mixed_use",
+          "sfr_portfolio",
+          "hoa",
+          "condo_unit",
+          "small_commercial_re",
+          "builders_risk",
+          "unknown",
+        ],
+        description: "Carbon's seven asset classes plus 'unknown' when not stated.",
+      },
+      location: {
+        type: "object",
+        properties: {
+          city: { type: "string" },
+          state: { type: "string", description: "Two-letter state code (CA, NY, TX)." },
+          address: { type: "string" },
+        },
+      },
+      unit_count: { type: "number" },
+      year_built: { type: "number" },
+      construction_type: { type: "string" },
+      coverage_scope: {
+        type: "string",
+        enum: ["property_only", "property_liability", "full_package", "unknown"],
+      },
+      eq_exposure: { type: "string" },
+      eq_interest: { type: "string", enum: [...PERIL_INTEREST_ENUM] },
+      flood_exposure: { type: "string" },
+      flood_interest: { type: "string", enum: [...PERIL_INTEREST_ENUM] },
+      loss_history_summary: { type: "string" },
+      effective_date: {
+        type: "string",
+        description: "ISO YYYY-MM-DD when extractable, free-text otherwise.",
+      },
+      current_carrier: { type: "string" },
+      current_expiration: { type: "string", description: "ISO YYYY-MM-DD if extractable." },
+      expiring_premium: {
+        type: "number",
+        description: "USD numeric — \"$18,500\" → 18500.",
+      },
+      contact: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          email: { type: "string" },
+          phone: { type: "string" },
+          role: {
+            type: "string",
+            enum: [
+              "owner",
+              "asset_manager",
+              "property_manager",
+              "broker_referral",
+              "other",
+              "unknown",
+            ],
+          },
+          preferred_method: { type: "string", enum: ["email", "phone", "either"] },
+        },
+      },
+      consent_to_share_with_markets: { type: "boolean" },
+      inquiry_trigger: { type: "string" },
+      handoff: {
+        type: "object",
+        properties: {
+          reason: {
+            type: "string",
+            enum: [
+              "coverage_interpretation",
+              "portfolio_tiv_over_10m",
+              "active_loss",
+              "litigation_pending",
+              "out_of_appetite",
+            ],
+            description: "Which of the five hard-handoff triggers fired.",
+          },
+          notes: { type: "string", description: "≤ 280 chars of the prospect's triggering phrasing." },
+        },
+        required: ["reason"],
+      },
+      portfolio: {
+        type: "object",
+        properties: {
+          is_portfolio: { type: "boolean" },
+          property_count: { type: "number" },
+          total_tiv_usd: { type: "number" },
+        },
+        required: ["is_portfolio"],
+      },
+    },
+    required: ["asset_type", "location", "contact"],
+  },
+};
+
+/** Extract-mode tool list. The route passes this with
+ *  tool_choice: { type: "tool", name: "extract_intake" } to force the
+ *  model to call the tool and only the tool. */
+export const EXTRACT_TOOLS: ToolDefinition[] = [EXTRACT_INTAKE_TOOL];
 
 export type ToolResult = {
   /** Free-text payload the model reads back as the tool's output. */

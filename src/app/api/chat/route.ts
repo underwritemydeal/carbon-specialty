@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  CARBON_INTAKE_SYSTEM_PROMPT,
+  buildIntakeSystemBlocks,
   CARBON_EXTRACTION_SYSTEM_PROMPT,
 } from "@/lib/carbon-system-prompt";
-import { TOOLS, executeTool } from "@/lib/chat-tools";
+import {
+  TOOLS,
+  EXTRACT_TOOLS,
+  EXTRACT_INTAKE_TOOL_NAME,
+  executeTool,
+} from "@/lib/chat-tools";
+import {
+  appendDisclaimers,
+  type DisclaimerKind,
+} from "@/lib/disclaimers";
+import {
+  normalizeState,
+  type RateBandAssetClass,
+  type RateBandContext,
+} from "@/lib/rate-bands";
 import type { PropertyFacts } from "@/lib/property-facts";
 
 export const runtime = "nodejs";
@@ -13,26 +27,41 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * /api/chat — sprint C.S.1.6.
+ * /api/chat — sprint C.S.1.7.0k.
  *
- * Replaces the Covr Worker for Carbon Specialty chat completions. POST
- * { messages: ChatMessage[] } → calls Anthropic Messages API (Haiku 4.5),
- * runs a server-side tool-use loop until the model returns a non-tool
- * stop_reason or we hit the 5-iteration cap, returns the final assistant
- * text plus a flat list of tools the loop executed (for the UI status).
+ * Two modes: intake and extract.
  *
- * The system prompt is sent as a single block with
- * `cache_control: { type: "ephemeral" }` so it caches across turns and
- * the per-request input cost drops to the cache-read tier after the
- * first call.
+ * Intake mode
+ * -----------
+ *   POST { messages, mode: "intake" } → Anthropic Messages API (Haiku 4.5)
+ *   with a cache-friendly two-block system payload:
+ *     [0] stable prompt + ephemeral cache breakpoint
+ *     [1] dynamic rate-band slice (varies per turn from the running
+ *         RateBandContext we derive from the most recent enrich_property
+ *         result + anything the user volunteered)
+ *   The route runs a server-side tool-use loop (enrich_property only)
+ *   until a non-tool stop, then appends locked disclaimers (see
+ *   src/lib/disclaimers.ts) when pricing / coverage-scope / data-source
+ *   language is detected in the final assistant text.
+ *
+ * Extract mode
+ * ------------
+ *   POST { messages, mode: "extract" } → forced tool-use of
+ *   `extract_intake`. tool_choice pins the call so the model can't
+ *   sidestep the schema. The route reads the tool_use.input directly
+ *   and returns it as `payload` — no free-text JSON to parse, no
+ *   markdown-fence stripping. Replaces the C.S.1.7.0j second-LLM-call
+ *   extraction.
  *
  * Error categories (all logged with prefix [carbon-chat]):
- *   - BAD_REQUEST         — missing/malformed body, missing env key
- *   - ANTHROPIC_AUTH      — 401/403 from Anthropic
+ *   - BAD_REQUEST          — missing/malformed body, missing env key
+ *   - ANTHROPIC_AUTH       — 401/403 from Anthropic
  *   - ANTHROPIC_RATE_LIMIT — 429
- *   - ANTHROPIC_SERVER    — 5xx or network
- *   - TOOL_EXECUTION_FAIL — tool dispatcher threw or returned ok:false
- *   - LOOP_EXHAUSTED      — hit MAX_TOOL_ITERATIONS without natural stop
+ *   - ANTHROPIC_SERVER     — 5xx or network
+ *   - TOOL_EXECUTION_FAIL  — tool dispatcher threw or returned ok:false
+ *   - LOOP_EXHAUSTED       — hit MAX_TOOL_ITERATIONS without natural stop
+ *   - EXTRACT_NO_TOOL_USE  — extract mode came back without the
+ *                            forced tool_use (model refused / drifted)
  *
  * Graceful degradation: a missing ANTHROPIC_API_KEY does NOT crash —
  * the route returns 503 with a BAD_REQUEST envelope so the CarbonChat
@@ -50,6 +79,10 @@ interface ChatResponseEnvelope {
   text?: string;
   tools_executed?: string[];
   property_facts?: PropertyFacts;
+  /** Disclaimer kinds the route appended to `text` on this turn. */
+  disclaimers_applied?: DisclaimerKind[];
+  /** Extract-mode only — the structured CarbonIntakePayload. */
+  payload?: Record<string, unknown>;
   error?: string;
   error_kind?:
     | "BAD_REQUEST"
@@ -57,7 +90,8 @@ interface ChatResponseEnvelope {
     | "ANTHROPIC_RATE_LIMIT"
     | "ANTHROPIC_SERVER"
     | "TOOL_EXECUTION_FAIL"
-    | "LOOP_EXHAUSTED";
+    | "LOOP_EXHAUSTED"
+    | "EXTRACT_NO_TOOL_USE";
 }
 
 export async function POST(req: Request) {
@@ -96,8 +130,9 @@ export async function POST(req: Request) {
 }
 
 /* =========================================================================
- * Extract mode — single-shot, no tools, no cache (extraction prompt is
- * comparatively short and runs once per conversation).
+ * Extract mode — forced tool-use of `extract_intake`. The model returns
+ * a single tool_use block whose `input` IS the CarbonIntakePayload. The
+ * route reads and returns it verbatim.
  * ========================================================================= */
 
 async function runExtract(anthropic: Anthropic, messages: ChatMessage[]) {
@@ -107,21 +142,42 @@ async function runExtract(anthropic: Anthropic, messages: ChatMessage[]) {
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system: CARBON_EXTRACTION_SYSTEM_PROMPT,
+      tools: EXTRACT_TOOLS,
+      tool_choice: { type: "tool", name: EXTRACT_INTAKE_TOOL_NAME },
       messages: messages as Anthropic.MessageParam[],
     });
   } catch (e) {
     return handleAnthropicError(e);
   }
-  const text = collectText(resp.content);
+
+  const toolUse = resp.content.find(
+    (b): b is Anthropic.ToolUseBlock =>
+      b.type === "tool_use" && b.name === EXTRACT_INTAKE_TOOL_NAME,
+  );
+  if (!toolUse) {
+    console.error("[carbon-chat] EXTRACT_NO_TOOL_USE — model returned without forced tool call");
+    return envelopeError(
+      "Extraction model did not return a structured payload.",
+      "EXTRACT_NO_TOOL_USE",
+      502,
+    );
+  }
+
+  const payload =
+    toolUse.input && typeof toolUse.input === "object"
+      ? (toolUse.input as Record<string, unknown>)
+      : {};
+
   return NextResponse.json<ChatResponseEnvelope>({
     ok: true,
-    text,
-    tools_executed: [],
+    payload,
+    tools_executed: [EXTRACT_INTAKE_TOOL_NAME],
   });
 }
 
 /* =========================================================================
- * Intake mode — full tool-use loop, prompt-cached system block.
+ * Intake mode — full tool-use loop, two-block system payload with cache
+ * breakpoint, disclaimer concatenation post-stream.
  * ========================================================================= */
 
 async function runIntake(
@@ -129,10 +185,7 @@ async function runIntake(
   messages: ChatMessage[],
   origin: string,
 ) {
-
   // Working copy. The loop appends assistant and user (tool_result) turns.
-  // Anthropic expects role: "user" content as either string OR array of
-  // content blocks; tool_result needs the array form.
   /* eslint-disable @typescript-eslint/no-unused-vars */
   type WireMessage =
     | { role: "user" | "assistant"; content: string }
@@ -158,6 +211,7 @@ async function runIntake(
 
   const toolsExecuted: string[] = [];
   let lastPropertyFacts: PropertyFacts | undefined;
+  let rateBandContext: RateBandContext = deriveContextFromTranscript(messages);
   let iteration = 0;
 
   while (iteration < MAX_TOOL_ITERATIONS) {
@@ -167,13 +221,7 @@ async function runIntake(
       resp = await anthropic.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: [
-          {
-            type: "text",
-            text: CARBON_INTAKE_SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+        system: buildIntakeSystemBlocks(rateBandContext),
         tools: TOOLS,
         messages: wire as Anthropic.MessageParam[],
       });
@@ -186,12 +234,14 @@ async function runIntake(
     wire.push({ role: "assistant", content: resp.content as never });
 
     if (resp.stop_reason !== "tool_use") {
-      const text = collectText(resp.content);
+      const rawText = collectText(resp.content);
+      const { text, applied } = appendDisclaimers(rawText);
       return NextResponse.json<ChatResponseEnvelope>({
         ok: true,
         text,
         tools_executed: toolsExecuted,
         property_facts: lastPropertyFacts,
+        disclaimers_applied: applied,
       });
     }
 
@@ -202,12 +252,14 @@ async function runIntake(
     if (toolUses.length === 0) {
       // Defensive: stop_reason said tool_use but no blocks found. Treat
       // as a natural stop with whatever text is present.
-      const text = collectText(resp.content);
+      const rawText = collectText(resp.content);
+      const { text, applied } = appendDisclaimers(rawText);
       return NextResponse.json<ChatResponseEnvelope>({
         ok: true,
         text,
         tools_executed: toolsExecuted,
         property_facts: lastPropertyFacts,
+        disclaimers_applied: applied,
       });
     }
 
@@ -219,9 +271,7 @@ async function runIntake(
     }> = [];
 
     // C.S.1.7.0g — capture the user's most recent message so each tool
-    // result log entry has the prompt that triggered it. Used for
-    // post-mortems on hallucination reports (the brief calls this out:
-    // "what enrich_property actually returned in those failing cases").
+    // result log entry has the prompt that triggered it.
     const latestUserInput = findLatestUserText(messages);
 
     for (const use of toolUses) {
@@ -256,7 +306,12 @@ async function runIntake(
       }
       const elapsedMs = Date.now() - t0;
       toolsExecuted.push(use.name);
-      if (result.data) lastPropertyFacts = result.data;
+      if (result.data) {
+        lastPropertyFacts = result.data;
+        // Update the rate-band context from the fresh property facts so
+        // the next iteration's slice reflects what we just learned.
+        rateBandContext = mergeContext(rateBandContext, contextFromFacts(result.data));
+      }
       logToolResult({
         user_input: latestUserInput,
         tool_name: use.name,
@@ -286,6 +341,87 @@ async function runIntake(
     "LOOP_EXHAUSTED",
     500,
   );
+}
+
+/* =========================================================================
+ * Rate-band context derivation
+ *
+ * The rate-band slice gates on four fields: asset_class, state,
+ * unit_count, year_built. Two sources contribute:
+ *
+ *   1. Property facts from enrich_property — canonical state (parsed
+ *      from the formatted_address), units, year_built. Filled as the
+ *      tool returns data.
+ *
+ *   2. User transcript — asset class hints ("apartment building",
+ *      "mixed-use", "HOA"). Light pattern match; the rate-band slice
+ *      is permissive about partial context.
+ *
+ * Context is rebuilt at the start of each request from `messages` and
+ * progressively updated as tool results come in mid-loop. We do NOT
+ * persist it across HTTP requests — every POST recomputes from the
+ * full transcript, which is the source of truth.
+ * ========================================================================= */
+
+const ASSET_CLASS_HINTS: Array<{ re: RegExp; cls: RateBandAssetClass }> = [
+  { re: /\b(apartment\s+building|multi[-\s]?family|multifamily)\b/i, cls: "multifamily" },
+  { re: /\bmixed[-\s]?use\b/i, cls: "mixed_use" },
+  { re: /\b(sfr\s+portfolio|scattered[-\s]?site|single[-\s]?family\s+rentals)\b/i, cls: "sfr_portfolio" },
+  { re: /\b(HOA|condo\s+association|homeowners\s+association)\b/i, cls: "hoa" },
+  { re: /\b(condo\s+unit|single\s+condo|the\s+unit\s+I\s+own)\b/i, cls: "condo_unit" },
+  { re: /\b(builders?[-\s]?risk|ground[-\s]?up|adaptive\s+reuse|new\s+construction)\b/i, cls: "builders_risk" },
+  { re: /\b(office|retail|industrial|warehouse|owner[-\s]?occupied)\b/i, cls: "small_commercial_re" },
+];
+
+function deriveContextFromTranscript(messages: ChatMessage[]): RateBandContext {
+  let asset_class: RateBandAssetClass | undefined;
+  for (const m of messages) {
+    if (m.role !== "user") continue;
+    for (const hint of ASSET_CLASS_HINTS) {
+      if (hint.re.test(m.content)) {
+        asset_class = hint.cls;
+        break;
+      }
+    }
+    if (asset_class) break;
+  }
+  return { asset_class };
+}
+
+function contextFromFacts(facts: PropertyFacts): RateBandContext {
+  const out: RateBandContext = {};
+  // Pull the two-letter state code out of the canonical address. The
+  // geocoder writes it in the standard ", CA " / ", CA, " positions.
+  const canon = facts.canonical_address ?? "";
+  const stateMatch = canon.match(/,\s*([A-Z]{2})(?:[\s,]|$)/);
+  if (stateMatch && normalizeState(stateMatch[1])) {
+    out.state = stateMatch[1];
+  }
+  if (typeof facts.units === "number") out.unit_count = facts.units;
+  if (typeof facts.year_built === "number") out.year_built = facts.year_built;
+  // Asset class can be inferred from land_use_desc on common cases. The
+  // chat will still confirm with the user, but the slice surfaces a
+  // band immediately when the inference is clean.
+  const useDesc = (facts.land_use_desc ?? "").toLowerCase();
+  if (typeof facts.units === "number" && facts.units >= 5 && useDesc.includes("residential")) {
+    out.asset_class = "multifamily";
+  } else if (useDesc.includes("multi-family") || useDesc.includes("multifamily")) {
+    out.asset_class = "multifamily";
+  } else if (useDesc.includes("mixed")) {
+    out.asset_class = "mixed_use";
+  } else if (useDesc.includes("condominium")) {
+    out.asset_class = "condo_unit";
+  }
+  return out;
+}
+
+function mergeContext(base: RateBandContext, next: RateBandContext): RateBandContext {
+  return {
+    asset_class: next.asset_class ?? base.asset_class,
+    state: next.state ?? base.state,
+    unit_count: next.unit_count ?? base.unit_count,
+    year_built: next.year_built ?? base.year_built,
+  };
 }
 
 /* =========================================================================
@@ -321,18 +457,10 @@ function collectText(blocks: Anthropic.ContentBlock[]): string {
 /* =========================================================================
  * Structured tool-result logging — C.S.1.7.0g
  *
- * Emitted once per tool execution (success or thrown). The hallucination
- * brief calls these entries out as the post-mortem data for failing
- * cases — when a user reports "the chat described a property in Kansas
- * City when I typed an SF address," we need to see what the tool actually
- * returned so we can tell whether the LLM invented facts or the upstream
- * returned junk. Single JSON line, one prefix, easy grep:
+ * Emitted once per tool execution (success or thrown). Single JSON
+ * line, one prefix, easy grep:
  *
  *   vercel logs --since 1h | grep '\[carbon-chat:tool-result\]'
- *
- * Long string fields are truncated to 500 chars to keep Vercel runtime
- * logs scannable. The structured object is logged AFTER the prefix so
- * grep + jq can pipe cleanly.
  * ========================================================================= */
 
 const LOG_TRUNCATE_CHARS = 500;
@@ -373,8 +501,6 @@ export function logToolResult(entry: ToolResultLogEntry): void {
     elapsed_ms: entry.elapsed_ms,
   };
 
-  // Structured single-line emit. JSON.stringify can throw on circular
-  // refs; guard so a malformed tool response can never crash the route.
   let serialized: string;
   try {
     serialized = JSON.stringify(payload);
