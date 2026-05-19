@@ -26,29 +26,116 @@
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string };
 
+/** C.S.1.7.0j — handoff trigger categories. When the intake prompt
+ *  fires a hard-handoff, the extraction step encodes the reason here
+ *  so the specialist queue email surfaces it prominently. */
+export type HandoffReason =
+  | "coverage_interpretation"
+  | "portfolio_tiv_over_10m"
+  | "active_loss"
+  | "litigation_pending";
+
+/** C.S.1.7.0j — coverage scope the prospect is requesting. */
+export type CoverageScope =
+  | "property_only"
+  | "property_liability"
+  | "full_package"
+  | "unknown";
+
+/** C.S.1.7.0j — peril interest signal for EQ + flood. */
+export type PerilInterest =
+  | "currently_carry"
+  | "looking_to_add"
+  | "not_interested"
+  | "unknown";
+
 export interface CarbonIntakePayload {
+  // Field 2 — asset class (existing). C.S.1.7.0j added "condo_unit"
+  // for prospects insuring a single condo unit rather than the whole
+  // HOA/building (paired with the C.S.1.7.0i Realie condo
+  // disambiguation hint in chat-tools).
   asset_type:
     | "multifamily"
     | "mixed_use"
     | "sfr_portfolio"
     | "hoa"
+    | "condo_unit"
     | "small_commercial_re"
     | "builders_risk"
     | "unknown";
+
+  // Field 1 — address (location)
   location: { city?: string; state?: string; address?: string };
   unit_count?: number;
   year_built?: number;
   construction_type?: string;
+
+  // Field 3 — coverage scope (C.S.1.7.0j)
+  coverage_scope?: CoverageScope;
+
+  // Field 4 — earthquake exposure + interest (C.S.1.7.0j)
+  eq_exposure?: string;
+  eq_interest?: PerilInterest;
+
+  // Field 5 — flood exposure + interest (C.S.1.7.0j)
+  flood_exposure?: string;
+  flood_interest?: PerilInterest;
+
+  // Field 6 — loss history (existing)
+  loss_history_summary?: string;
+
+  // Field 7 — effective date (C.S.1.7.0j). ISO YYYY-MM-DD where
+  // possible; free-text if the prospect is ambiguous ("end of month",
+  // "ASAP").
+  effective_date?: string;
+
+  // Field 8 — current carrier + expiring premium (current_carrier
+  // + current_expiration existed; C.S.1.7.0j added expiring_premium).
   current_carrier?: string;
   current_expiration?: string;
-  loss_history_summary?: string;
-  inquiry_trigger?: string;
+  expiring_premium?: number;
+
+  // Field 9 — contact (existing). C.S.1.7.0j added `role`.
   contact: {
     name?: string;
     email?: string;
     phone?: string;
+    role?:
+      | "owner"
+      | "asset_manager"
+      | "property_manager"
+      | "broker_referral"
+      | "other"
+      | "unknown";
     preferred_method?: "email" | "phone" | "either";
   };
+
+  // Field 10 — consent to share with markets (C.S.1.7.0j).
+  consent_to_share_with_markets?: boolean;
+
+  // Inquiry trigger (existing)
+  inquiry_trigger?: string;
+
+  /** C.S.1.7.0j — handoff state. Present only when one of the four
+   *  hard-handoff triggers fired during the intake; absent otherwise.
+   *  When present, the wrap-up sentinel was NOT emitted and the
+   *  conversation ended at the handoff. */
+  handoff?: {
+    reason: HandoffReason;
+    /** The user's phrasing that triggered it, for the specialist's
+     *  context. Truncated to ~280 chars by the extractor. */
+    notes?: string;
+  };
+
+  /** C.S.1.7.0j — portfolio detection state. Present when the
+   *  prospect signaled a multi-property situation. `total_tiv_usd` is
+   *  numeric so the routing layer can apply the $10M threshold. */
+  portfolio?: {
+    is_portfolio: boolean;
+    property_count?: number;
+    total_tiv_usd?: number;
+  };
+
   conversation_full: string;
   source: "carbon_specialty_website_chat";
   submitted_at: string;
@@ -259,6 +346,31 @@ export async function extractIntakePayload(
   if (typeof p.current_expiration === "string") out.current_expiration = p.current_expiration;
   if (typeof p.loss_history_summary === "string") out.loss_history_summary = p.loss_history_summary;
   if (typeof p.inquiry_trigger === "string") out.inquiry_trigger = p.inquiry_trigger;
+
+  // C.S.1.7.0j — 10-field structured intake additions. All optional;
+  // the extraction prompt rules omit fields the prospect didn't cover.
+  if (typeof p.coverage_scope === "string") {
+    out.coverage_scope = p.coverage_scope as CarbonIntakePayload["coverage_scope"];
+  }
+  if (typeof p.eq_exposure === "string") out.eq_exposure = p.eq_exposure;
+  if (typeof p.eq_interest === "string") {
+    out.eq_interest = p.eq_interest as CarbonIntakePayload["eq_interest"];
+  }
+  if (typeof p.flood_exposure === "string") out.flood_exposure = p.flood_exposure;
+  if (typeof p.flood_interest === "string") {
+    out.flood_interest = p.flood_interest as CarbonIntakePayload["flood_interest"];
+  }
+  if (typeof p.effective_date === "string") out.effective_date = p.effective_date;
+  if (typeof p.expiring_premium === "number") out.expiring_premium = p.expiring_premium;
+  if (typeof p.consent_to_share_with_markets === "boolean") {
+    out.consent_to_share_with_markets = p.consent_to_share_with_markets;
+  }
+  if (p.handoff && typeof p.handoff === "object") {
+    out.handoff = p.handoff as CarbonIntakePayload["handoff"];
+  }
+  if (p.portfolio && typeof p.portfolio === "object") {
+    out.portfolio = p.portfolio as CarbonIntakePayload["portfolio"];
+  }
   return out;
 }
 

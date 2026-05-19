@@ -20,6 +20,7 @@ type AssetType =
   | "mixed_use"
   | "sfr_portfolio"
   | "hoa"
+  | "condo_unit"
   | "small_commercial_re"
   | "builders_risk"
   | "unknown";
@@ -34,15 +35,50 @@ interface IntakeBody {
   unit_count?: number;
   year_built?: number;
   construction_type?: string;
+  // C.S.1.7.0j — 10-field structured intake additions:
+  coverage_scope?: "property_only" | "property_liability" | "full_package" | "unknown";
+  eq_exposure?: string;
+  eq_interest?: "currently_carry" | "looking_to_add" | "not_interested" | "unknown";
+  flood_exposure?: string;
+  flood_interest?: "currently_carry" | "looking_to_add" | "not_interested" | "unknown";
+  loss_history_summary?: string;
+  effective_date?: string;
   current_carrier?: string;
   current_expiration?: string;
-  loss_history_summary?: string;
+  expiring_premium?: number;
+  consent_to_share_with_markets?: boolean;
   inquiry_trigger?: string;
   contact?: {
     name?: string;
     email?: string;
     phone?: string;
+    role?:
+      | "owner"
+      | "asset_manager"
+      | "property_manager"
+      | "broker_referral"
+      | "other"
+      | "unknown";
     preferred_method?: "email" | "phone" | "either";
+  };
+  /** C.S.1.7.0j — present only when a hard-handoff trigger fired during
+   *  the intake. When present, the specialist queue email surfaces it
+   *  prominently above the standard fields. */
+  handoff?: {
+    reason:
+      | "coverage_interpretation"
+      | "portfolio_tiv_over_10m"
+      | "active_loss"
+      | "litigation_pending";
+    notes?: string;
+  };
+  /** C.S.1.7.0j — portfolio detection state. Present when the prospect
+   *  signaled multiple properties. total_tiv_usd is numeric so the routing
+   *  layer can apply the $10M threshold (handoff trigger #2). */
+  portfolio?: {
+    is_portfolio: boolean;
+    property_count?: number;
+    total_tiv_usd?: number;
   };
 }
 
@@ -79,9 +115,52 @@ const ASSET_LABELS: Record<AssetType, string> = {
   mixed_use: "Mixed-use",
   sfr_portfolio: "SFR portfolio",
   hoa: "Condo HOA",
+  condo_unit: "Single condo unit",
   small_commercial_re: "Small commercial real estate",
   builders_risk: "Builders risk",
   unknown: "Unknown asset type",
+};
+
+const HANDOFF_LABELS: Record<
+  NonNullable<IntakeBody["handoff"]>["reason"],
+  string
+> = {
+  coverage_interpretation: "Coverage interpretation question",
+  portfolio_tiv_over_10m: "Portfolio TIV > $10M",
+  active_loss: "Active loss in progress",
+  litigation_pending: "Litigation pending",
+};
+
+const COVERAGE_SCOPE_LABELS: Record<
+  NonNullable<IntakeBody["coverage_scope"]>,
+  string
+> = {
+  property_only: "Property only",
+  property_liability: "Property + liability",
+  full_package: "Full package (incl. EPLI / D&O / umbrella)",
+  unknown: "Unknown",
+};
+
+const PERIL_INTEREST_LABELS: Record<
+  NonNullable<IntakeBody["eq_interest"]>,
+  string
+> = {
+  currently_carry: "Currently carries",
+  looking_to_add: "Looking to add",
+  not_interested: "Not interested",
+  unknown: "Unknown",
+};
+
+const CONTACT_ROLE_LABELS: Record<
+  NonNullable<NonNullable<IntakeBody["contact"]>["role"]>,
+  string
+> = {
+  owner: "Owner",
+  asset_manager: "Asset manager",
+  property_manager: "Property manager",
+  broker_referral: "Broker referral",
+  other: "Other",
+  unknown: "Unknown",
 };
 
 export async function POST(req: Request) {
@@ -203,6 +282,27 @@ function textFor(body: Body): string {
     return lines.join("\n");
   }
 
+  // C.S.1.7.0j — handoff surfaces above everything else. When present,
+  // a specialist needs to act on this lead immediately rather than
+  // treating it as a standard intake.
+  if (body.handoff) {
+    lines.push("--- HANDOFF: SPECIALIST REQUIRED ---");
+    lines.push(`Reason:            ${HANDOFF_LABELS[body.handoff.reason] ?? body.handoff.reason}`);
+    if (body.handoff.notes) lines.push(`Trigger phrase:    ${body.handoff.notes}`);
+    lines.push("");
+  }
+
+  if (body.portfolio?.is_portfolio) {
+    lines.push("--- Portfolio ---");
+    if (typeof body.portfolio.property_count === "number") {
+      lines.push(`Property count:    ${body.portfolio.property_count}`);
+    }
+    if (typeof body.portfolio.total_tiv_usd === "number") {
+      lines.push(`Total TIV:         $${body.portfolio.total_tiv_usd.toLocaleString("en-US")}`);
+    }
+    lines.push("");
+  }
+
   // Intake payload
   lines.push("--- Submission ---");
   if (body.asset_type) lines.push(`Asset type:        ${ASSET_LABELS[body.asset_type] ?? body.asset_type}`);
@@ -212,9 +312,33 @@ function textFor(body: Body): string {
   if (typeof body.unit_count === "number") lines.push(`Unit count:        ${body.unit_count}`);
   if (typeof body.year_built === "number") lines.push(`Year built:        ${body.year_built}`);
   if (body.construction_type) lines.push(`Construction:      ${body.construction_type}`);
+  if (body.coverage_scope) {
+    lines.push(`Coverage scope:    ${COVERAGE_SCOPE_LABELS[body.coverage_scope] ?? body.coverage_scope}`);
+  }
+  if (body.eq_exposure || body.eq_interest) {
+    const exposure = body.eq_exposure ?? "—";
+    const interest = body.eq_interest
+      ? PERIL_INTEREST_LABELS[body.eq_interest] ?? body.eq_interest
+      : "—";
+    lines.push(`Earthquake:        ${exposure} · ${interest}`);
+  }
+  if (body.flood_exposure || body.flood_interest) {
+    const exposure = body.flood_exposure ?? "—";
+    const interest = body.flood_interest
+      ? PERIL_INTEREST_LABELS[body.flood_interest] ?? body.flood_interest
+      : "—";
+    lines.push(`Flood:             ${exposure} · ${interest}`);
+  }
+  if (body.loss_history_summary) lines.push(`Loss history:      ${body.loss_history_summary}`);
+  if (body.effective_date) lines.push(`Effective date:    ${body.effective_date}`);
   if (body.current_carrier) lines.push(`Current carrier:   ${body.current_carrier}`);
   if (body.current_expiration) lines.push(`Expiration:        ${body.current_expiration}`);
-  if (body.loss_history_summary) lines.push(`Loss history:      ${body.loss_history_summary}`);
+  if (typeof body.expiring_premium === "number") {
+    lines.push(`Expiring premium:  $${body.expiring_premium.toLocaleString("en-US")}`);
+  }
+  if (typeof body.consent_to_share_with_markets === "boolean") {
+    lines.push(`Markets consent:   ${body.consent_to_share_with_markets ? "Yes" : "No (hold for review)"}`);
+  }
   if (body.inquiry_trigger) lines.push(`Inquiry trigger:   ${body.inquiry_trigger}`);
 
   if (body.contact) {
@@ -223,6 +347,8 @@ function textFor(body: Body): string {
     if (body.contact.name) lines.push(`Name:              ${body.contact.name}`);
     if (body.contact.email) lines.push(`Email:             ${body.contact.email}`);
     if (body.contact.phone) lines.push(`Phone:             ${body.contact.phone}`);
+    if (body.contact.role)
+      lines.push(`Role:              ${CONTACT_ROLE_LABELS[body.contact.role] ?? body.contact.role}`);
     if (body.contact.preferred_method)
       lines.push(`Preferred method:  ${body.contact.preferred_method}`);
   }
@@ -294,10 +420,35 @@ function htmlFor(body: Body): string {
 
   const asset = body.asset_type ? ASSET_LABELS[body.asset_type] : "Unknown";
   const loc = locationLabel(body.location);
+
+  // C.S.1.7.0j — handoff callout. Surfaces above the standard intake
+  // table when present so the specialist sees the trigger before any
+  // other field. Uses the ember/red palette (#B33A2A) so it visually
+  // separates from the editorial intake content.
+  const handoffBlock = body.handoff
+    ? `<div style="border:2px solid #B33A2A; background:#FBEBE8; padding:16px; margin:0 0 24px;">
+        <p style="font-family:monospace; font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#B33A2A; margin:0 0 8px;">Handoff: specialist required</p>
+        <h2 style="font-family:Georgia,serif; font-weight:400; font-size:20px; margin:0 0 8px;">${escapeHtml(
+          HANDOFF_LABELS[body.handoff.reason] ?? body.handoff.reason,
+        )}</h2>
+        ${body.handoff.notes ? `<p style="font-size:13px; color:#2A2A2D; margin:0;">Trigger phrase: <em>"${escapeHtml(body.handoff.notes)}"</em></p>` : ""}
+      </div>`
+    : "";
+
+  // C.S.1.7.0j — portfolio summary if signaled.
+  const portfolioBlock = body.portfolio?.is_portfolio
+    ? `<h3 style="font-family:Georgia,serif; font-weight:400; font-size:16px; margin-top:24px;">Portfolio</h3>
+       <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C; border-bottom:1px solid #0B0B0C;">
+         ${row("Property count", body.portfolio.property_count?.toString())}
+         ${row("Total TIV", body.portfolio.total_tiv_usd ? `$${body.portfolio.total_tiv_usd.toLocaleString("en-US")}` : undefined)}
+       </table>`
+    : "";
+
   return `<!DOCTYPE html><html><body style="${styles}">
     <div style="max-width:640px;margin:0 auto;">
       <p style="font-family:monospace; font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#1F4D38;">Carbon Specialty · New intake</p>
       <h1 style="font-family:Georgia,serif; font-weight:400; font-size:28px; margin:8px 0 24px; letter-spacing:-0.02em;">${escapeHtml(asset)}${loc ? ` <em>in ${escapeHtml(loc)}</em>` : ""}</h1>
+      ${handoffBlock}
       <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C;">
         ${row("Reference", body.reference_id)}
         ${row("Submitted", body.submitted_at)}
@@ -307,16 +458,24 @@ function htmlFor(body: Body): string {
         ${row("Unit count", body.unit_count?.toString())}
         ${row("Year built", body.year_built?.toString())}
         ${row("Construction", body.construction_type)}
+        ${row("Coverage scope", body.coverage_scope ? COVERAGE_SCOPE_LABELS[body.coverage_scope] : undefined)}
+        ${row("Earthquake", body.eq_exposure || body.eq_interest ? `${body.eq_exposure ?? "—"} · ${body.eq_interest ? PERIL_INTEREST_LABELS[body.eq_interest] : "—"}` : undefined)}
+        ${row("Flood", body.flood_exposure || body.flood_interest ? `${body.flood_exposure ?? "—"} · ${body.flood_interest ? PERIL_INTEREST_LABELS[body.flood_interest] : "—"}` : undefined)}
+        ${row("Loss history", body.loss_history_summary)}
+        ${row("Effective date", body.effective_date)}
         ${row("Current carrier", body.current_carrier)}
         ${row("Expiration", body.current_expiration)}
-        ${row("Loss history", body.loss_history_summary)}
+        ${row("Expiring premium", typeof body.expiring_premium === "number" ? `$${body.expiring_premium.toLocaleString("en-US")}` : undefined)}
+        ${row("Markets consent", typeof body.consent_to_share_with_markets === "boolean" ? (body.consent_to_share_with_markets ? "Yes" : "No (hold for review)") : undefined)}
         ${row("Inquiry trigger", body.inquiry_trigger)}
       </table>
+      ${portfolioBlock}
       <h3 style="font-family:Georgia,serif; font-weight:400; font-size:16px; margin-top:24px;">Contact</h3>
       <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C; border-bottom:1px solid #0B0B0C;">
         ${row("Name", body.contact?.name)}
         ${row("Email", body.contact?.email)}
         ${row("Phone", body.contact?.phone)}
+        ${row("Role", body.contact?.role ? CONTACT_ROLE_LABELS[body.contact.role] : undefined)}
         ${row("Preferred", body.contact?.preferred_method)}
       </table>
       ${
