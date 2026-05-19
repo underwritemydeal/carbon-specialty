@@ -28,8 +28,7 @@ export type ChatMessage = { role: ChatRole; content: string };
 
 /** C.S.1.7.0j → C.S.1.7.0k — handoff trigger categories. When the
  *  intake prompt fires a hard-handoff, the extraction step encodes the
- *  reason here so the specialist queue email surfaces it prominently.
- *  C.S.1.7.0k added `out_of_appetite` (5th trigger). */
+ *  reason here so the specialist queue email surfaces it prominently. */
 export type HandoffReason =
   | "coverage_interpretation"
   | "portfolio_tiv_over_10m"
@@ -37,101 +36,108 @@ export type HandoffReason =
   | "litigation_pending"
   | "out_of_appetite";
 
-/** C.S.1.7.0j — coverage scope the prospect is requesting. */
-export type CoverageScope =
-  | "property_only"
-  | "property_liability"
-  | "full_package"
+/** C.S.1.7.1 — habitational asset class union (collapsed from the
+ *  C.S.1.7.0 seven-class set). Out of appetite: condo units, small
+ *  commercial RE, builders risk. */
+export type AssetClass =
+  | "multifamily"
+  | "mixed_use"
+  | "sfr_portfolio"
+  | "hoa"
   | "unknown";
 
-/** C.S.1.7.0j — peril interest signal for EQ + flood. */
-export type PerilInterest =
-  | "currently_carry"
-  | "looking_to_add"
-  | "not_interested"
+/** C.S.1.7.1 — electrical service type. The three middle values
+ *  (federal_pacific_stab_lok, knob_and_tube, aluminum_branch) are
+ *  carrier-killer signals on habitational risks; surfacing them at
+ *  intake lets a specialist match the submission to a market that
+ *  will entertain it. */
+export type ElectricalType =
+  | "standard_breakers"
+  | "federal_pacific_stab_lok"
+  | "knob_and_tube"
+  | "aluminum_branch"
+  | "fuse_box"
+  | "mixed"
   | "unknown";
 
+/** C.S.1.7.1 — self-reported claim entry from the 5-year loss history
+ *  question. Loss runs are gathered post-handoff by the specialist;
+ *  intake captures only what the prospect can recall. */
+export interface LossHistoryEntry {
+  year: number;
+  type: string;
+  approx_amount_usd: number;
+}
+
+/** C.S.1.7.1 — habitational COPE intake payload.
+ *
+ *  Replaces the C.S.1.7.0j/0k 10-field schema. The 8-turn habitational
+ *  COPE flow surfaces underwriting-grade signals (sprinklered, central
+ *  station alarm, electrical service type, gross annual rents) and
+ *  drops the abstract coverage_scope / eq_interest / flood_interest
+ *  unions — those gather more usefully as passive-listener fields or
+ *  not at all, since the placement specialist will work them out
+ *  during post-handoff.
+ *
+ *  Construction type is populated from enrich_property's parcel data
+ *  and is NEVER user-asked (typing "wood frame" doesn't help an
+ *  underwriter — the parcel record does, and Carbon's construction-
+ *  sanity layer in C.S.1.7.0e flags suspicious county codes). */
 export interface CarbonIntakePayload {
-  // Field 2 — asset class (existing). C.S.1.7.0j added "condo_unit"
-  // for prospects insuring a single condo unit rather than the whole
-  // HOA/building (paired with the C.S.1.7.0i Realie condo
-  // disambiguation hint in chat-tools).
-  asset_type:
-    | "multifamily"
-    | "mixed_use"
-    | "sfr_portfolio"
-    | "hoa"
-    | "condo_unit"
-    | "small_commercial_re"
-    | "builders_risk"
-    | "unknown";
-
-  // Field 1 — address (location)
-  location: { city?: string; state?: string; address?: string };
-  unit_count?: number;
-  year_built?: number;
-  construction_type?: string;
-
-  // Field 3 — coverage scope (C.S.1.7.0j)
-  coverage_scope?: CoverageScope;
-
-  // Field 4 — earthquake exposure + interest (C.S.1.7.0j)
-  eq_exposure?: string;
-  eq_interest?: PerilInterest;
-
-  // Field 5 — flood exposure + interest (C.S.1.7.0j)
-  flood_exposure?: string;
-  flood_interest?: PerilInterest;
-
-  // Field 6 — loss history (existing)
-  loss_history_summary?: string;
-
-  // Field 7 — effective date (C.S.1.7.0j). ISO YYYY-MM-DD where
-  // possible; free-text if the prospect is ambiguous ("end of month",
-  // "ASAP").
-  effective_date?: string;
-
-  // Field 8 — current carrier + expiring premium (current_carrier
-  // + current_expiration existed; C.S.1.7.0j added expiring_premium).
-  current_carrier?: string;
-  current_expiration?: string;
-  expiring_premium?: number;
-
-  // Field 9 — contact (existing). C.S.1.7.0j added `role`.
+  asset_class: AssetClass;
+  unit_count: number;
+  square_footage: number;
+  year_built: number;
+  sprinklered: boolean;
+  central_station_alarm: boolean;
+  electrical_type: ElectricalType;
+  gross_annual_rents: number;
+  effective_date: string;
+  current_carrier: string | null;
+  expiring_premium_usd: number | null;
+  loss_history_5yr: LossHistoryEntry[];
+  /** Passive listener — true when the prospect raised flood / FEMA /
+   *  water-intrusion concern at any point. Carbon does NOT proactively
+   *  ask about flood in the habitational COPE sequence. */
+  flood_concern_volunteered: boolean;
+  /** Passive listener — string description of any third-party property
+   *  manager the prospect mentioned (e.g. "Greystar runs the property").
+   *  null when no third-party PM was disclosed. */
+  property_mgmt_disclosed: string | null;
+  /** Populated by enrich_property; never asked of the user. null when
+   *  enrichment was unavailable or the construction code was flagged
+   *  unreliable by the construction-sanity layer. */
+  construction_type: string | null;
+  /** Entity on the dec page (e.g. "ACME Holdings LLC"). Distinct from
+   *  contact.name (the human reaching out). */
+  named_insured: string;
   contact: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    role?:
-      | "owner"
-      | "asset_manager"
-      | "property_manager"
-      | "broker_referral"
-      | "other"
-      | "unknown";
-    preferred_method?: "email" | "phone" | "either";
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
   };
+  consent: boolean;
+  /** Flips to true once the model has surfaced the enrich_property
+   *  facts in the Turn 2 confirmation message and the prospect has
+   *  confirmed or corrected them. */
+  enrichment_confirmed: boolean;
 
-  // Field 10 — consent to share with markets (C.S.1.7.0j).
-  consent_to_share_with_markets?: boolean;
-
-  // Inquiry trigger (existing)
+  /** Inquiry trigger (preserved from prior schemas — a single phrase
+   *  capturing why the prospect reached out). */
   inquiry_trigger?: string;
 
-  /** C.S.1.7.0j — handoff state. Present only when one of the four
-   *  hard-handoff triggers fired during the intake; absent otherwise.
-   *  When present, the wrap-up sentinel was NOT emitted and the
-   *  conversation ended at the handoff. */
+  /** Handoff state — present only when one of the five hard-handoff
+   *  triggers fired during the intake; absent otherwise. When present,
+   *  the wrap-up sentinel was NOT emitted and the conversation ended
+   *  at the handoff. */
   handoff?: {
     reason: HandoffReason;
-    /** The user's phrasing that triggered it, for the specialist's
-     *  context. Truncated to ~280 chars by the extractor. */
     notes?: string;
   };
 
-  /** C.S.1.7.0j — portfolio detection state. Present when the
-   *  prospect signaled a multi-property situation. `total_tiv_usd` is
-   *  numeric so the routing layer can apply the $10M threshold. */
+  /** Portfolio detection state — present when the prospect signaled a
+   *  multi-property situation. */
   portfolio?: {
     is_portfolio: boolean;
     property_count?: number;
@@ -339,42 +345,61 @@ export async function extractIntakePayload(
     throw new ChatError("bad-shape", "Extraction returned no structured payload");
   }
 
-  // Conservatively normalize: ensure asset_type, location, contact exist.
+  // C.S.1.7.1 normalizer — habitational COPE schema. Missing fields
+  // default conservatively (booleans → false, strings → "", numbers → 0,
+  // arrays → []) so downstream consumers (Resend email body) never
+  // crash on undefined. The handoff path may legitimately produce an
+  // intake that's mostly empty when a trigger fires early; the email
+  // template surfaces which fields the prospect actually filled.
   const p = structured;
+  const contactRaw = (p.contact ?? {}) as Record<string, unknown>;
+  const lossRaw = Array.isArray(p.loss_history_5yr) ? p.loss_history_5yr : [];
+
   const out: Omit<
     CarbonIntakePayload,
     "conversation_full" | "source" | "submitted_at" | "reference_id"
   > = {
-    asset_type: (p.asset_type as CarbonIntakePayload["asset_type"]) ?? "unknown",
-    location: (p.location as CarbonIntakePayload["location"]) ?? {},
-    contact: (p.contact as CarbonIntakePayload["contact"]) ?? {},
+    asset_class: (p.asset_class as AssetClass) ?? "unknown",
+    unit_count: typeof p.unit_count === "number" ? p.unit_count : 0,
+    square_footage: typeof p.square_footage === "number" ? p.square_footage : 0,
+    year_built: typeof p.year_built === "number" ? p.year_built : 0,
+    sprinklered: typeof p.sprinklered === "boolean" ? p.sprinklered : false,
+    central_station_alarm:
+      typeof p.central_station_alarm === "boolean" ? p.central_station_alarm : false,
+    electrical_type: (p.electrical_type as ElectricalType) ?? "unknown",
+    gross_annual_rents: typeof p.gross_annual_rents === "number" ? p.gross_annual_rents : 0,
+    effective_date: typeof p.effective_date === "string" ? p.effective_date : "",
+    current_carrier:
+      typeof p.current_carrier === "string" ? p.current_carrier : null,
+    expiring_premium_usd:
+      typeof p.expiring_premium_usd === "number" ? p.expiring_premium_usd : null,
+    loss_history_5yr: lossRaw
+      .map((e) => e as Record<string, unknown>)
+      .filter((e) => typeof e?.year === "number" && typeof e?.type === "string")
+      .map((e) => ({
+        year: e.year as number,
+        type: e.type as string,
+        approx_amount_usd:
+          typeof e.approx_amount_usd === "number" ? (e.approx_amount_usd as number) : 0,
+      })),
+    flood_concern_volunteered:
+      typeof p.flood_concern_volunteered === "boolean" ? p.flood_concern_volunteered : false,
+    property_mgmt_disclosed:
+      typeof p.property_mgmt_disclosed === "string" ? p.property_mgmt_disclosed : null,
+    construction_type:
+      typeof p.construction_type === "string" ? p.construction_type : null,
+    named_insured: typeof p.named_insured === "string" ? p.named_insured : "",
+    contact: {
+      name: typeof contactRaw.name === "string" ? contactRaw.name : "",
+      role: typeof contactRaw.role === "string" ? contactRaw.role : "",
+      email: typeof contactRaw.email === "string" ? contactRaw.email : "",
+      phone: typeof contactRaw.phone === "string" ? contactRaw.phone : "",
+    },
+    consent: typeof p.consent === "boolean" ? p.consent : false,
+    enrichment_confirmed:
+      typeof p.enrichment_confirmed === "boolean" ? p.enrichment_confirmed : false,
   };
-  if (typeof p.unit_count === "number") out.unit_count = p.unit_count;
-  if (typeof p.year_built === "number") out.year_built = p.year_built;
-  if (typeof p.construction_type === "string") out.construction_type = p.construction_type;
-  if (typeof p.current_carrier === "string") out.current_carrier = p.current_carrier;
-  if (typeof p.current_expiration === "string") out.current_expiration = p.current_expiration;
-  if (typeof p.loss_history_summary === "string") out.loss_history_summary = p.loss_history_summary;
   if (typeof p.inquiry_trigger === "string") out.inquiry_trigger = p.inquiry_trigger;
-
-  // C.S.1.7.0j — 10-field structured intake additions. All optional;
-  // the extraction prompt rules omit fields the prospect didn't cover.
-  if (typeof p.coverage_scope === "string") {
-    out.coverage_scope = p.coverage_scope as CarbonIntakePayload["coverage_scope"];
-  }
-  if (typeof p.eq_exposure === "string") out.eq_exposure = p.eq_exposure;
-  if (typeof p.eq_interest === "string") {
-    out.eq_interest = p.eq_interest as CarbonIntakePayload["eq_interest"];
-  }
-  if (typeof p.flood_exposure === "string") out.flood_exposure = p.flood_exposure;
-  if (typeof p.flood_interest === "string") {
-    out.flood_interest = p.flood_interest as CarbonIntakePayload["flood_interest"];
-  }
-  if (typeof p.effective_date === "string") out.effective_date = p.effective_date;
-  if (typeof p.expiring_premium === "number") out.expiring_premium = p.expiring_premium;
-  if (typeof p.consent_to_share_with_markets === "boolean") {
-    out.consent_to_share_with_markets = p.consent_to_share_with_markets;
-  }
   if (p.handoff && typeof p.handoff === "object") {
     out.handoff = p.handoff as CarbonIntakePayload["handoff"];
   }
