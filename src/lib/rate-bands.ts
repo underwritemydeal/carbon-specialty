@@ -50,16 +50,16 @@
  * Types
  * ========================================================================= */
 
-/** Asset classes Carbon writes. Mirrors CarbonIntakePayload['asset_type']
- *  minus `unknown` (the table can't return a range for "unknown"). */
+/** Asset classes Carbon writes. Mirrors CarbonIntakePayload['asset_class']
+ *  minus `unknown` (the table can't return a range for "unknown").
+ *  Narrowed in C.S.1.7.1 to the four habitational classes — condo_unit,
+ *  small_commercial_re, and builders_risk are out of appetite as of the
+ *  habitational COPE intake rewrite. */
 export type RateBandAssetClass =
   | "multifamily"
   | "mixed_use"
   | "sfr_portfolio"
-  | "hoa"
-  | "condo_unit"
-  | "small_commercial_re"
-  | "builders_risk";
+  | "hoa";
 
 /** Two-letter state codes the table covers. Empty for asset classes
  *  Carbon hasn't seeded yet. Carbon's footprint is CA-heavy; AZ + NV

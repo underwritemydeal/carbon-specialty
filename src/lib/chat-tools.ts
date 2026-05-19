@@ -49,96 +49,129 @@ export const TOOLS: ToolDefinition[] = [
 ];
 
 /* =========================================================================
- * extract_intake — C.S.1.7.0k structured-extraction tool
+ * extract_intake — C.S.1.7.1 habitational COPE structured-extraction tool
  *
  * The model is forced to call this exactly once with the structured
  * CarbonIntakePayload. The route reads `tool_use.input` and returns it
- * verbatim to the client; there is no server-side execution. Forced
- * tool-use eliminates the JSON-parsing failure mode the C.S.1.7.0j
- * second LLM call ran into when the model wrapped its output in
- * markdown fences or trailing prose.
+ * verbatim to the client; there is no server-side execution.
  *
- * The input_schema mirrors the documentation block in
- * CARBON_EXTRACTION_SYSTEM_PROMPT (carbon-system-prompt.ts). Both must
- * be updated together when the payload shape changes.
+ * Schema mirrors CarbonIntakePayload in src/lib/carbon-intake.ts and
+ * the prose documentation in CARBON_EXTRACTION_SYSTEM_PROMPT. All
+ * three must be updated together when the shape changes.
+ *
+ * C.S.1.7.1 changes from C.S.1.7.0k:
+ *   - asset_class enum collapsed to 5 values (habitational only)
+ *   - dropped coverage_scope, eq_interest, flood_interest
+ *   - added square_footage, sprinklered, central_station_alarm,
+ *     electrical_type, gross_annual_rents, expiring_premium_usd,
+ *     loss_history_5yr (array of {year, type, approx_amount_usd}),
+ *     flood_concern_volunteered, property_mgmt_disclosed,
+ *     named_insured, consent, enrichment_confirmed
+ *   - construction_type is populated from enrich_property, never user-asked
+ *   - field renamed: asset_type → asset_class
+ *   - field renamed: consent_to_share_with_markets → consent
+ *   - location object removed (address lives in the transcript)
  * ========================================================================= */
 
 export const EXTRACT_INTAKE_TOOL_NAME = "extract_intake" as const;
 
-const PERIL_INTEREST_ENUM = ["currently_carry", "looking_to_add", "not_interested", "unknown"] as const;
+const ELECTRICAL_TYPE_ENUM = [
+  "standard_breakers",
+  "federal_pacific_stab_lok",
+  "knob_and_tube",
+  "aluminum_branch",
+  "fuse_box",
+  "mixed",
+  "unknown",
+] as const;
 
 export const EXTRACT_INTAKE_TOOL: ToolDefinition = {
   name: EXTRACT_INTAKE_TOOL_NAME,
   description:
-    "Emit the structured CarbonIntakePayload from the intake transcript. Call exactly once. All fields except asset_type, location, and contact are optional — omit fields the prospect did not cover.",
+    "Emit the structured CarbonIntakePayload from the habitational COPE intake transcript. Call exactly once. Required fields: asset_class, contact, enrichment_confirmed. Optional fields are omitted when the prospect did not cover them. The construction_type field is populated from enrich_property tool results, never user-asked.",
   input_schema: {
     type: "object",
     properties: {
-      asset_type: {
+      asset_class: {
         type: "string",
-        enum: [
-          "multifamily",
-          "mixed_use",
-          "sfr_portfolio",
-          "hoa",
-          "condo_unit",
-          "small_commercial_re",
-          "builders_risk",
-          "unknown",
-        ],
-        description: "Carbon's seven asset classes plus 'unknown' when not stated.",
-      },
-      location: {
-        type: "object",
-        properties: {
-          city: { type: "string" },
-          state: { type: "string", description: "Two-letter state code (CA, NY, TX)." },
-          address: { type: "string" },
-        },
+        enum: ["multifamily", "mixed_use", "sfr_portfolio", "hoa", "unknown"],
+        description:
+          "Habitational asset class. Use 'unknown' only if the transcript truly does not name a class.",
       },
       unit_count: { type: "number" },
+      square_footage: { type: "number" },
       year_built: { type: "number" },
-      construction_type: { type: "string" },
-      coverage_scope: {
+      sprinklered: { type: "boolean" },
+      central_station_alarm: { type: "boolean" },
+      electrical_type: {
         type: "string",
-        enum: ["property_only", "property_liability", "full_package", "unknown"],
+        enum: [...ELECTRICAL_TYPE_ENUM],
+        description:
+          "Electrical service type. federal_pacific_stab_lok, knob_and_tube, and aluminum_branch are carrier-killer signals.",
       },
-      eq_exposure: { type: "string" },
-      eq_interest: { type: "string", enum: [...PERIL_INTEREST_ENUM] },
-      flood_exposure: { type: "string" },
-      flood_interest: { type: "string", enum: [...PERIL_INTEREST_ENUM] },
-      loss_history_summary: { type: "string" },
-      effective_date: {
+      gross_annual_rents: { type: "number", description: "USD numeric." },
+      effective_date: { type: "string", description: "ISO 8601 (YYYY-MM-DD) when extractable, free-text otherwise." },
+      current_carrier: {
+        type: ["string", "null"] as unknown as string,
+        description: "Current insurance carrier name, or null if no current carrier.",
+      },
+      expiring_premium_usd: {
+        type: ["number", "null"] as unknown as string,
+        description: "Expiring premium in USD as a number (no $ sign, no commas), or null if not disclosed.",
+      },
+      loss_history_5yr: {
+        type: "array",
+        description:
+          "Self-reported claim entries from the last 5 years. Empty array if the prospect said 'no claims' or 'none'. Do NOT include loss-run data — those are gathered post-handoff.",
+        items: {
+          type: "object",
+          properties: {
+            year: { type: "number" },
+            type: { type: "string", description: "e.g. 'water damage', 'slip and fall', 'fire'." },
+            approx_amount_usd: { type: "number" },
+          },
+          required: ["year", "type", "approx_amount_usd"],
+        },
+      },
+      flood_concern_volunteered: {
+        type: "boolean",
+        description:
+          "Passive-listener flag. true when the prospect mentioned flood / FEMA zone / water intrusion at any point. Carbon never asks about flood directly in the habitational COPE sequence.",
+      },
+      property_mgmt_disclosed: {
+        type: ["string", "null"] as unknown as string,
+        description:
+          "Passive-listener field. Description of any third-party property manager (e.g. 'Greystar runs it'). null when no third-party PM was disclosed.",
+      },
+      construction_type: {
+        type: ["string", "null"] as unknown as string,
+        description:
+          "Populated from enrich_property's parcel data. Never user-asked. null when enrichment was unavailable.",
+      },
+      named_insured: {
         type: "string",
-        description: "ISO YYYY-MM-DD when extractable, free-text otherwise.",
-      },
-      current_carrier: { type: "string" },
-      current_expiration: { type: "string", description: "ISO YYYY-MM-DD if extractable." },
-      expiring_premium: {
-        type: "number",
-        description: "USD numeric — \"$18,500\" → 18500.",
+        description:
+          "Entity on the dec page (e.g. 'ACME Holdings LLC'). Distinct from contact.name.",
       },
       contact: {
         type: "object",
         properties: {
           name: { type: "string" },
+          role: { type: "string", description: "Free-text role: 'owner', 'asset manager', 'property manager', 'broker referral', etc." },
           email: { type: "string" },
           phone: { type: "string" },
-          role: {
-            type: "string",
-            enum: [
-              "owner",
-              "asset_manager",
-              "property_manager",
-              "broker_referral",
-              "other",
-              "unknown",
-            ],
-          },
-          preferred_method: { type: "string", enum: ["email", "phone", "either"] },
         },
       },
-      consent_to_share_with_markets: { type: "boolean" },
+      consent: {
+        type: "boolean",
+        description:
+          "Explicit consent to share with markets. true if the prospect agreed; false if they declined or asked to hold off.",
+      },
+      enrichment_confirmed: {
+        type: "boolean",
+        description:
+          "true after the Turn 2 enrichment confirmation has been completed (prospect confirmed or corrected the structured facts surfaced from enrich_property).",
+      },
       inquiry_trigger: { type: "string" },
       handoff: {
         type: "object",
@@ -168,7 +201,7 @@ export const EXTRACT_INTAKE_TOOL: ToolDefinition = {
         required: ["is_portfolio"],
       },
     },
-    required: ["asset_type", "location", "contact"],
+    required: ["asset_class", "contact", "enrichment_confirmed"],
   },
 };
 

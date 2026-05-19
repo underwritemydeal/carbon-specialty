@@ -135,20 +135,22 @@ describe("composeEnrichmentLines — pre-existing C.S.1.6/7 behaviors preserved"
 });
 
 /* =========================================================================
- * C.S.1.7.0k — extract_intake tool definition
+ * C.S.1.7.1 — extract_intake tool definition (habitational COPE schema)
  *
- * Extract mode migrates from a free-text second LLM call to a forced
- * tool-use against this schema. The model's tool_use.input IS the
- * CarbonIntakePayload; no JSON parsing needed on the client.
+ * Extract mode runs as a forced tool-use against this schema. The
+ * model's tool_use.input IS the CarbonIntakePayload; no JSON parsing
+ * needed on the client. C.S.1.7.1 collapses the asset class enum,
+ * drops coverage_scope / eq_interest / flood_interest, and adds the
+ * full habitational COPE field set.
  * ========================================================================= */
 
-describe("EXTRACT_INTAKE_TOOL — C.S.1.7.0k schema", () => {
+describe("EXTRACT_INTAKE_TOOL — C.S.1.7.1 habitational COPE schema", () => {
   it("registers under the canonical tool name 'extract_intake'", () => {
     expect(EXTRACT_INTAKE_TOOL.name).toBe(EXTRACT_INTAKE_TOOL_NAME);
     expect(EXTRACT_INTAKE_TOOL.name).toBe("extract_intake");
   });
 
-  it("is NOT included in the intake-mode TOOLS catalog (separation of concerns)", () => {
+  it("is NOT included in the intake-mode TOOLS catalog", () => {
     expect(TOOLS.find((t) => t.name === "extract_intake")).toBeUndefined();
   });
 
@@ -157,43 +159,116 @@ describe("EXTRACT_INTAKE_TOOL — C.S.1.7.0k schema", () => {
     expect(EXTRACT_TOOLS[0].name).toBe("extract_intake");
   });
 
-  it("input_schema is an object with required asset_type + location + contact", () => {
+  it("required fields: asset_class, contact, enrichment_confirmed", () => {
     const schema = EXTRACT_INTAKE_TOOL.input_schema as Record<string, unknown>;
     expect(schema.type).toBe("object");
-    expect(schema.required).toEqual(expect.arrayContaining(["asset_type", "location", "contact"]));
-  });
-
-  it("asset_type enum carries all 7 asset classes + 'unknown' + 'condo_unit'", () => {
-    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
-    const assetType = props.asset_type as { enum: string[] };
-    expect(assetType.enum).toEqual(
-      expect.arrayContaining([
-        "multifamily",
-        "mixed_use",
-        "sfr_portfolio",
-        "hoa",
-        "condo_unit",
-        "small_commercial_re",
-        "builders_risk",
-        "unknown",
-      ]),
+    expect(schema.required).toEqual(
+      expect.arrayContaining(["asset_class", "contact", "enrichment_confirmed"]),
     );
   });
 
-  it("coverage_scope enum mirrors CarbonIntakePayload's union", () => {
+  it("asset_class enum is the 5-value habitational union (no condo_unit/commercial/builders_risk)", () => {
     const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
-    const coverage = props.coverage_scope as { enum: string[] };
-    expect(coverage.enum).toEqual(["property_only", "property_liability", "full_package", "unknown"]);
+    const assetClass = props.asset_class as { enum: string[] };
+    expect(assetClass.enum).toEqual(["multifamily", "mixed_use", "sfr_portfolio", "hoa", "unknown"]);
+    expect(assetClass.enum).not.toContain("condo_unit");
+    expect(assetClass.enum).not.toContain("small_commercial_re");
+    expect(assetClass.enum).not.toContain("builders_risk");
   });
 
-  it("eq_interest + flood_interest enums mirror PerilInterest", () => {
+  it("electrical_type enum carries all 7 service-type values", () => {
     const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
-    const expected = ["currently_carry", "looking_to_add", "not_interested", "unknown"];
-    expect((props.eq_interest as { enum: string[] }).enum).toEqual(expected);
-    expect((props.flood_interest as { enum: string[] }).enum).toEqual(expected);
+    const electrical = props.electrical_type as { enum: string[] };
+    expect(electrical.enum).toEqual([
+      "standard_breakers",
+      "federal_pacific_stab_lok",
+      "knob_and_tube",
+      "aluminum_branch",
+      "fuse_box",
+      "mixed",
+      "unknown",
+    ]);
   });
 
-  it("handoff.reason includes all FIVE triggers (C.S.1.7.0k added out_of_appetite)", () => {
+  it("DROPPED fields are no longer present in the schema (C.S.1.7.1 removal)", () => {
+    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
+    expect(props).not.toHaveProperty("coverage_scope");
+    expect(props).not.toHaveProperty("eq_interest");
+    expect(props).not.toHaveProperty("flood_interest");
+    expect(props).not.toHaveProperty("eq_exposure");
+    expect(props).not.toHaveProperty("flood_exposure");
+    expect(props).not.toHaveProperty("asset_type"); // renamed to asset_class
+    expect(props).not.toHaveProperty("location");
+    expect(props).not.toHaveProperty("consent_to_share_with_markets"); // renamed to consent
+    expect(props).not.toHaveProperty("current_expiration");
+    expect(props).not.toHaveProperty("expiring_premium"); // renamed to expiring_premium_usd
+    expect(props).not.toHaveProperty("loss_history_summary"); // replaced by loss_history_5yr
+  });
+
+  it("NEW habitational COPE fields are present in the schema", () => {
+    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
+    expect(props).toHaveProperty("asset_class");
+    expect(props).toHaveProperty("unit_count");
+    expect(props).toHaveProperty("square_footage");
+    expect(props).toHaveProperty("year_built");
+    expect(props).toHaveProperty("sprinklered");
+    expect(props).toHaveProperty("central_station_alarm");
+    expect(props).toHaveProperty("electrical_type");
+    expect(props).toHaveProperty("gross_annual_rents");
+    expect(props).toHaveProperty("effective_date");
+    expect(props).toHaveProperty("current_carrier");
+    expect(props).toHaveProperty("expiring_premium_usd");
+    expect(props).toHaveProperty("loss_history_5yr");
+    expect(props).toHaveProperty("flood_concern_volunteered");
+    expect(props).toHaveProperty("property_mgmt_disclosed");
+    expect(props).toHaveProperty("construction_type");
+    expect(props).toHaveProperty("named_insured");
+    expect(props).toHaveProperty("contact");
+    expect(props).toHaveProperty("consent");
+    expect(props).toHaveProperty("enrichment_confirmed");
+  });
+
+  it("field TYPE shapes match C.S.1.7.1 spec", () => {
+    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
+    expect((props.unit_count as { type: string }).type).toBe("number");
+    expect((props.square_footage as { type: string }).type).toBe("number");
+    expect((props.year_built as { type: string }).type).toBe("number");
+    expect((props.gross_annual_rents as { type: string }).type).toBe("number");
+    expect((props.sprinklered as { type: string }).type).toBe("boolean");
+    expect((props.central_station_alarm as { type: string }).type).toBe("boolean");
+    expect((props.consent as { type: string }).type).toBe("boolean");
+    expect((props.enrichment_confirmed as { type: string }).type).toBe("boolean");
+    expect((props.flood_concern_volunteered as { type: string }).type).toBe("boolean");
+    expect((props.named_insured as { type: string }).type).toBe("string");
+    expect((props.effective_date as { type: string }).type).toBe("string");
+    expect((props.loss_history_5yr as { type: string }).type).toBe("array");
+  });
+
+  it("loss_history_5yr items shape: { year, type, approx_amount_usd } all required", () => {
+    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
+    const lossHistory = props.loss_history_5yr as {
+      items: { type: string; properties: Record<string, unknown>; required: string[] };
+    };
+    expect(lossHistory.items.type).toBe("object");
+    expect(lossHistory.items.properties).toHaveProperty("year");
+    expect(lossHistory.items.properties).toHaveProperty("type");
+    expect(lossHistory.items.properties).toHaveProperty("approx_amount_usd");
+    expect(lossHistory.items.required).toEqual(
+      expect.arrayContaining(["year", "type", "approx_amount_usd"]),
+    );
+  });
+
+  it("contact sub-object has name, role, email, phone (no preferred_method)", () => {
+    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
+    const contact = props.contact as { properties: Record<string, unknown> };
+    expect(contact.properties).toHaveProperty("name");
+    expect(contact.properties).toHaveProperty("role");
+    expect(contact.properties).toHaveProperty("email");
+    expect(contact.properties).toHaveProperty("phone");
+    expect(contact.properties).not.toHaveProperty("preferred_method");
+  });
+
+  it("handoff.reason includes all FIVE triggers (preserved from C.S.1.7.0k)", () => {
     const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
     const handoff = props.handoff as { properties: { reason: { enum: string[] } } };
     expect(handoff.properties.reason.enum).toEqual([
@@ -202,19 +277,6 @@ describe("EXTRACT_INTAKE_TOOL — C.S.1.7.0k schema", () => {
       "active_loss",
       "litigation_pending",
       "out_of_appetite",
-    ]);
-  });
-
-  it("contact.role union matches CarbonIntakePayload's contact.role", () => {
-    const props = (EXTRACT_INTAKE_TOOL.input_schema as { properties: Record<string, unknown> }).properties;
-    const contact = props.contact as { properties: { role: { enum: string[] } } };
-    expect(contact.properties.role.enum).toEqual([
-      "owner",
-      "asset_manager",
-      "property_manager",
-      "broker_referral",
-      "other",
-      "unknown",
     ]);
   });
 

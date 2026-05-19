@@ -208,15 +208,8 @@ describe("rate-bands — selectRateBand resolution", () => {
     ).toBeNull();
   });
 
-  it("returns null for asset classes not seeded yet (mixed_use, hoa, etc.)", () => {
-    for (const cls of [
-      "mixed_use",
-      "sfr_portfolio",
-      "hoa",
-      "condo_unit",
-      "small_commercial_re",
-      "builders_risk",
-    ] as const) {
+  it("returns null for asset classes not seeded yet (mixed_use, sfr_portfolio, hoa)", () => {
+    for (const cls of ["mixed_use", "sfr_portfolio", "hoa"] as const) {
       expect(
         selectRateBand({
           asset_class: cls,
@@ -272,10 +265,12 @@ describe("rate-bands — buildRateBandSlice (system-prompt dynamic block)", () =
   });
 
   it("with full context that misses the table: tells the model to NOT improvise a range", () => {
+    // hoa is a valid habitational class but not seeded in the
+    // placeholder table yet — slice should refuse to improvise.
     const slice = buildRateBandSlice({
-      asset_class: "small_commercial_re",
+      asset_class: "hoa",
       state: "CA",
-      unit_count: 1,
+      unit_count: 20,
       year_built: 2015,
     });
     expect(slice).toContain("No banded indication available");

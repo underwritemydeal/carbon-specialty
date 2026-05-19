@@ -4,77 +4,82 @@ import { Resend } from "resend";
 export const runtime = "nodejs";
 
 /**
- * Lead-fallback route — sprint C.S.1.4.
+ * Lead-fallback route — sprint C.S.1.4 / rewritten C.S.1.7.1.
  *
- * Accepts two shapes:
- *   - CarbonIntakePayload  (source: "carbon_specialty_website_chat")
+ * Accepts three shapes:
+ *   - CarbonIntakePayload  (source: "carbon_specialty_website_chat")  — habitational COPE schema
  *   - CarbonContactPayload (source: "carbon_specialty_website_contact_form")
+ *   - CarbonFormPayload    (source: "carbon_specialty_website_quote_form")
  *
  * Composes a plaintext + HTML email, surfaces every field, and sends via
  * Resend. Falls back to a console.warn log-only mode when Resend is not
  * yet configured (no FALLBACK_EMAIL_TO or RESEND_API_KEY).
  */
 
-type AssetType =
+type AssetClass =
   | "multifamily"
   | "mixed_use"
   | "sfr_portfolio"
   | "hoa"
-  | "condo_unit"
-  | "small_commercial_re"
-  | "builders_risk"
   | "unknown";
+
+type ElectricalType =
+  | "standard_breakers"
+  | "federal_pacific_stab_lok"
+  | "knob_and_tube"
+  | "aluminum_branch"
+  | "fuse_box"
+  | "mixed"
+  | "unknown";
+
+interface LossHistoryEntry {
+  year: number;
+  type: string;
+  approx_amount_usd: number;
+}
 
 interface IntakeBody {
   source: "carbon_specialty_website_chat";
   reference_id: string;
   submitted_at: string;
   conversation_full?: string;
-  asset_type?: AssetType;
-  location?: { city?: string; state?: string; address?: string };
+  // C.S.1.7.1 habitational COPE fields
+  asset_class?: AssetClass;
   unit_count?: number;
+  square_footage?: number;
   year_built?: number;
-  construction_type?: string;
-  // C.S.1.7.0j — 10-field structured intake additions:
-  coverage_scope?: "property_only" | "property_liability" | "full_package" | "unknown";
-  eq_exposure?: string;
-  eq_interest?: "currently_carry" | "looking_to_add" | "not_interested" | "unknown";
-  flood_exposure?: string;
-  flood_interest?: "currently_carry" | "looking_to_add" | "not_interested" | "unknown";
-  loss_history_summary?: string;
+  sprinklered?: boolean;
+  central_station_alarm?: boolean;
+  electrical_type?: ElectricalType;
+  gross_annual_rents?: number;
   effective_date?: string;
-  current_carrier?: string;
-  current_expiration?: string;
-  expiring_premium?: number;
-  consent_to_share_with_markets?: boolean;
-  inquiry_trigger?: string;
+  current_carrier?: string | null;
+  expiring_premium_usd?: number | null;
+  loss_history_5yr?: LossHistoryEntry[];
+  flood_concern_volunteered?: boolean;
+  property_mgmt_disclosed?: string | null;
+  construction_type?: string | null;
+  named_insured?: string;
   contact?: {
     name?: string;
+    role?: string;
     email?: string;
     phone?: string;
-    role?:
-      | "owner"
-      | "asset_manager"
-      | "property_manager"
-      | "broker_referral"
-      | "other"
-      | "unknown";
-    preferred_method?: "email" | "phone" | "either";
   };
-  /** C.S.1.7.0j — present only when a hard-handoff trigger fired during
-   *  the intake. When present, the specialist queue email surfaces it
-   *  prominently above the standard fields. */
+  consent?: boolean;
+  enrichment_confirmed?: boolean;
+  inquiry_trigger?: string;
+  /** Present only when a hard-handoff trigger fired during the intake. */
   handoff?: {
     reason:
       | "coverage_interpretation"
       | "portfolio_tiv_over_10m"
       | "active_loss"
-      | "litigation_pending";
+      | "litigation_pending"
+      | "out_of_appetite";
     notes?: string;
   };
-  /** C.S.1.7.0j — portfolio detection state. Present when the prospect
-   *  signaled multiple properties. total_tiv_usd is numeric so the routing
-   *  layer can apply the $10M threshold (handoff trigger #2). */
+  /** Portfolio detection state. */
   portfolio?: {
     is_portfolio: boolean;
     property_count?: number;
@@ -110,15 +115,12 @@ interface QuoteFormBody {
 
 type Body = IntakeBody | ContactFormBody | QuoteFormBody;
 
-const ASSET_LABELS: Record<AssetType, string> = {
+const ASSET_LABELS: Record<AssetClass, string> = {
   multifamily: "Multifamily",
   mixed_use: "Mixed-use",
   sfr_portfolio: "SFR portfolio",
   hoa: "Condo HOA",
-  condo_unit: "Single condo unit",
-  small_commercial_re: "Small commercial real estate",
-  builders_risk: "Builders risk",
-  unknown: "Unknown asset type",
+  unknown: "Unknown asset class",
 };
 
 const HANDOFF_LABELS: Record<
@@ -129,38 +131,17 @@ const HANDOFF_LABELS: Record<
   portfolio_tiv_over_10m: "Portfolio TIV > $10M",
   active_loss: "Active loss in progress",
   litigation_pending: "Litigation pending",
+  out_of_appetite: "Out-of-appetite asset class",
 };
 
-const COVERAGE_SCOPE_LABELS: Record<
-  NonNullable<IntakeBody["coverage_scope"]>,
-  string
-> = {
-  property_only: "Property only",
-  property_liability: "Property + liability",
-  full_package: "Full package (incl. EPLI / D&O / umbrella)",
-  unknown: "Unknown",
-};
-
-const PERIL_INTEREST_LABELS: Record<
-  NonNullable<IntakeBody["eq_interest"]>,
-  string
-> = {
-  currently_carry: "Currently carries",
-  looking_to_add: "Looking to add",
-  not_interested: "Not interested",
-  unknown: "Unknown",
-};
-
-const CONTACT_ROLE_LABELS: Record<
-  NonNullable<NonNullable<IntakeBody["contact"]>["role"]>,
-  string
-> = {
-  owner: "Owner",
-  asset_manager: "Asset manager",
-  property_manager: "Property manager",
-  broker_referral: "Broker referral",
-  other: "Other",
-  unknown: "Unknown",
+const ELECTRICAL_LABELS: Record<ElectricalType, string> = {
+  standard_breakers: "Standard breakers",
+  federal_pacific_stab_lok: "Federal Pacific Stab-Lok (carrier flag)",
+  knob_and_tube: "Knob-and-tube (carrier flag)",
+  aluminum_branch: "Aluminum branch wiring (carrier flag)",
+  fuse_box: "Fuse box",
+  mixed: "Mixed",
+  unknown: "Unknown / not disclosed",
 };
 
 export async function POST(req: Request) {
@@ -231,18 +212,9 @@ function subjectFor(body: Body): string {
     const where = body.address ?? "";
     return `Carbon Specialty — Quote form: ${asset}${where ? ` · ${where}` : ""} · ${body.reference_id}`;
   }
-  const asset = body.asset_type ? ASSET_LABELS[body.asset_type] : "Unknown asset";
-  const where = locationLabel(body.location);
-  return `Carbon Specialty — New Intake: ${asset}${where ? ` in ${where}` : ""} · ${body.reference_id}`;
-}
-
-function locationLabel(loc?: IntakeBody["location"]): string {
-  if (!loc) return "";
-  if (loc.city && loc.state) return `${loc.city}, ${loc.state}`;
-  if (loc.city) return loc.city;
-  if (loc.state) return loc.state;
-  if (loc.address) return loc.address;
-  return "";
+  const asset = body.asset_class ? ASSET_LABELS[body.asset_class] : "Unknown asset";
+  const insured = body.named_insured ? ` — ${body.named_insured}` : "";
+  return `Carbon Specialty — New Intake: ${asset}${insured} · ${body.reference_id}`;
 }
 
 function textFor(body: Body): string {
@@ -282,9 +254,7 @@ function textFor(body: Body): string {
     return lines.join("\n");
   }
 
-  // C.S.1.7.0j — handoff surfaces above everything else. When present,
-  // a specialist needs to act on this lead immediately rather than
-  // treating it as a standard intake.
+  // Handoff surfaces above everything else.
   if (body.handoff) {
     lines.push("--- HANDOFF: SPECIALIST REQUIRED ---");
     lines.push(`Reason:            ${HANDOFF_LABELS[body.handoff.reason] ?? body.handoff.reason}`);
@@ -303,54 +273,64 @@ function textFor(body: Body): string {
     lines.push("");
   }
 
-  // Intake payload
-  lines.push("--- Submission ---");
-  if (body.asset_type) lines.push(`Asset type:        ${ASSET_LABELS[body.asset_type] ?? body.asset_type}`);
-  const loc = locationLabel(body.location);
-  if (loc) lines.push(`Location:          ${loc}`);
-  if (body.location?.address) lines.push(`Address:           ${body.location.address}`);
+  // Habitational COPE submission
+  lines.push("--- Submission (Habitational COPE) ---");
+  if (body.asset_class) lines.push(`Asset class:       ${ASSET_LABELS[body.asset_class] ?? body.asset_class}`);
+  if (body.named_insured) lines.push(`Named insured:     ${body.named_insured}`);
   if (typeof body.unit_count === "number") lines.push(`Unit count:        ${body.unit_count}`);
+  if (typeof body.square_footage === "number") lines.push(`Square footage:    ${body.square_footage.toLocaleString("en-US")}`);
   if (typeof body.year_built === "number") lines.push(`Year built:        ${body.year_built}`);
   if (body.construction_type) lines.push(`Construction:      ${body.construction_type}`);
-  if (body.coverage_scope) {
-    lines.push(`Coverage scope:    ${COVERAGE_SCOPE_LABELS[body.coverage_scope] ?? body.coverage_scope}`);
+  if (typeof body.sprinklered === "boolean") lines.push(`Sprinklered:       ${body.sprinklered ? "Yes" : "No"}`);
+  if (typeof body.central_station_alarm === "boolean") {
+    lines.push(`Central alarm:     ${body.central_station_alarm ? "Yes" : "No"}`);
   }
-  if (body.eq_exposure || body.eq_interest) {
-    const exposure = body.eq_exposure ?? "—";
-    const interest = body.eq_interest
-      ? PERIL_INTEREST_LABELS[body.eq_interest] ?? body.eq_interest
-      : "—";
-    lines.push(`Earthquake:        ${exposure} · ${interest}`);
+  if (body.electrical_type) lines.push(`Electrical:        ${ELECTRICAL_LABELS[body.electrical_type] ?? body.electrical_type}`);
+  if (typeof body.gross_annual_rents === "number") {
+    lines.push(`Gross annual rents: $${body.gross_annual_rents.toLocaleString("en-US")}`);
   }
-  if (body.flood_exposure || body.flood_interest) {
-    const exposure = body.flood_exposure ?? "—";
-    const interest = body.flood_interest
-      ? PERIL_INTEREST_LABELS[body.flood_interest] ?? body.flood_interest
-      : "—";
-    lines.push(`Flood:             ${exposure} · ${interest}`);
-  }
-  if (body.loss_history_summary) lines.push(`Loss history:      ${body.loss_history_summary}`);
   if (body.effective_date) lines.push(`Effective date:    ${body.effective_date}`);
   if (body.current_carrier) lines.push(`Current carrier:   ${body.current_carrier}`);
-  if (body.current_expiration) lines.push(`Expiration:        ${body.current_expiration}`);
-  if (typeof body.expiring_premium === "number") {
-    lines.push(`Expiring premium:  $${body.expiring_premium.toLocaleString("en-US")}`);
+  if (typeof body.expiring_premium_usd === "number") {
+    lines.push(`Expiring premium:  $${body.expiring_premium_usd.toLocaleString("en-US")}`);
   }
-  if (typeof body.consent_to_share_with_markets === "boolean") {
-    lines.push(`Markets consent:   ${body.consent_to_share_with_markets ? "Yes" : "No (hold for review)"}`);
+  if (typeof body.consent === "boolean") {
+    lines.push(`Markets consent:   ${body.consent ? "Yes" : "No (hold for review)"}`);
+  }
+  if (typeof body.enrichment_confirmed === "boolean") {
+    lines.push(`Enrichment confirmed: ${body.enrichment_confirmed ? "Yes" : "No"}`);
+  }
+  if (body.flood_concern_volunteered) {
+    lines.push(`Flood concern:     Volunteered by prospect (passive-listener flag)`);
+  }
+  if (body.property_mgmt_disclosed) {
+    lines.push(`Property mgmt:     ${body.property_mgmt_disclosed}`);
   }
   if (body.inquiry_trigger) lines.push(`Inquiry trigger:   ${body.inquiry_trigger}`);
+
+  if (Array.isArray(body.loss_history_5yr) && body.loss_history_5yr.length > 0) {
+    lines.push("");
+    lines.push("--- Loss history (self-reported, 5yr) ---");
+    for (const entry of body.loss_history_5yr) {
+      const amount = typeof entry.approx_amount_usd === "number"
+        ? `~$${entry.approx_amount_usd.toLocaleString("en-US")}`
+        : "amount n/d";
+      lines.push(`  ${entry.year} · ${entry.type} · ${amount}`);
+    }
+    lines.push("");
+    lines.push("Loss runs to be gathered post-handoff by the specialist.");
+  } else if (Array.isArray(body.loss_history_5yr)) {
+    lines.push("");
+    lines.push("Loss history (5yr): None reported.");
+  }
 
   if (body.contact) {
     lines.push("");
     lines.push("--- Contact ---");
     if (body.contact.name) lines.push(`Name:              ${body.contact.name}`);
+    if (body.contact.role) lines.push(`Role:              ${body.contact.role}`);
     if (body.contact.email) lines.push(`Email:             ${body.contact.email}`);
     if (body.contact.phone) lines.push(`Phone:             ${body.contact.phone}`);
-    if (body.contact.role)
-      lines.push(`Role:              ${CONTACT_ROLE_LABELS[body.contact.role] ?? body.contact.role}`);
-    if (body.contact.preferred_method)
-      lines.push(`Preferred method:  ${body.contact.preferred_method}`);
   }
 
   if (body.conversation_full) {
@@ -418,13 +398,8 @@ function htmlFor(body: Body): string {
     </body></html>`;
   }
 
-  const asset = body.asset_type ? ASSET_LABELS[body.asset_type] : "Unknown";
-  const loc = locationLabel(body.location);
+  const asset = body.asset_class ? ASSET_LABELS[body.asset_class] : "Unknown";
 
-  // C.S.1.7.0j — handoff callout. Surfaces above the standard intake
-  // table when present so the specialist sees the trigger before any
-  // other field. Uses the ember/red palette (#B33A2A) so it visually
-  // separates from the editorial intake content.
   const handoffBlock = body.handoff
     ? `<div style="border:2px solid #B33A2A; background:#FBEBE8; padding:16px; margin:0 0 24px;">
         <p style="font-family:monospace; font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#B33A2A; margin:0 0 8px;">Handoff: specialist required</p>
@@ -435,7 +410,6 @@ function htmlFor(body: Body): string {
       </div>`
     : "";
 
-  // C.S.1.7.0j — portfolio summary if signaled.
   const portfolioBlock = body.portfolio?.is_portfolio
     ? `<h3 style="font-family:Georgia,serif; font-weight:400; font-size:16px; margin-top:24px;">Portfolio</h3>
        <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C; border-bottom:1px solid #0B0B0C;">
@@ -444,39 +418,57 @@ function htmlFor(body: Body): string {
        </table>`
     : "";
 
+  const lossBlock =
+    Array.isArray(body.loss_history_5yr) && body.loss_history_5yr.length > 0
+      ? `<h3 style="font-family:Georgia,serif; font-weight:400; font-size:16px; margin-top:24px;">Loss history (self-reported, 5yr)</h3>
+         <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C; border-bottom:1px solid #0B0B0C;">
+           ${body.loss_history_5yr
+             .map(
+               (e) =>
+                 `<tr><td style="padding:6px 12px 6px 0; font-family:monospace; font-size:12px; color:#6E6E72;">${e.year}</td><td style="padding:6px 0; font-size:14px;">${escapeHtml(e.type)}</td><td style="padding:6px 0; font-size:14px; text-align:right;">~$${e.approx_amount_usd.toLocaleString("en-US")}</td></tr>`,
+             )
+             .join("")}
+         </table>
+         <p style="font-size:12px; color:#6E6E72; margin:8px 0 0; font-style:italic;">Loss runs to be gathered post-handoff by the specialist.</p>`
+      : Array.isArray(body.loss_history_5yr)
+      ? `<p style="font-size:13px; color:#2A2A2D; margin-top:16px;">Loss history (5yr): None reported.</p>`
+      : "";
+
   return `<!DOCTYPE html><html><body style="${styles}">
     <div style="max-width:640px;margin:0 auto;">
-      <p style="font-family:monospace; font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#1F4D38;">Carbon Specialty · New intake</p>
-      <h1 style="font-family:Georgia,serif; font-weight:400; font-size:28px; margin:8px 0 24px; letter-spacing:-0.02em;">${escapeHtml(asset)}${loc ? ` <em>in ${escapeHtml(loc)}</em>` : ""}</h1>
+      <p style="font-family:monospace; font-size:11px; letter-spacing:0.22em; text-transform:uppercase; color:#1F4D38;">Carbon Specialty · New intake (Habitational COPE)</p>
+      <h1 style="font-family:Georgia,serif; font-weight:400; font-size:28px; margin:8px 0 24px; letter-spacing:-0.02em;">${escapeHtml(asset)}${body.named_insured ? ` <em>— ${escapeHtml(body.named_insured)}</em>` : ""}</h1>
       ${handoffBlock}
       <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C;">
         ${row("Reference", body.reference_id)}
         ${row("Submitted", body.submitted_at)}
-        ${row("Asset type", asset)}
-        ${row("Location", loc)}
-        ${row("Address", body.location?.address)}
+        ${row("Asset class", asset)}
+        ${row("Named insured", body.named_insured)}
         ${row("Unit count", body.unit_count?.toString())}
+        ${row("Square footage", typeof body.square_footage === "number" ? body.square_footage.toLocaleString("en-US") : undefined)}
         ${row("Year built", body.year_built?.toString())}
-        ${row("Construction", body.construction_type)}
-        ${row("Coverage scope", body.coverage_scope ? COVERAGE_SCOPE_LABELS[body.coverage_scope] : undefined)}
-        ${row("Earthquake", body.eq_exposure || body.eq_interest ? `${body.eq_exposure ?? "—"} · ${body.eq_interest ? PERIL_INTEREST_LABELS[body.eq_interest] : "—"}` : undefined)}
-        ${row("Flood", body.flood_exposure || body.flood_interest ? `${body.flood_exposure ?? "—"} · ${body.flood_interest ? PERIL_INTEREST_LABELS[body.flood_interest] : "—"}` : undefined)}
-        ${row("Loss history", body.loss_history_summary)}
+        ${row("Construction", body.construction_type ?? undefined)}
+        ${row("Sprinklered", typeof body.sprinklered === "boolean" ? (body.sprinklered ? "Yes" : "No") : undefined)}
+        ${row("Central alarm", typeof body.central_station_alarm === "boolean" ? (body.central_station_alarm ? "Yes" : "No") : undefined)}
+        ${row("Electrical", body.electrical_type ? ELECTRICAL_LABELS[body.electrical_type] : undefined)}
+        ${row("Gross annual rents", typeof body.gross_annual_rents === "number" ? `$${body.gross_annual_rents.toLocaleString("en-US")}` : undefined)}
         ${row("Effective date", body.effective_date)}
-        ${row("Current carrier", body.current_carrier)}
-        ${row("Expiration", body.current_expiration)}
-        ${row("Expiring premium", typeof body.expiring_premium === "number" ? `$${body.expiring_premium.toLocaleString("en-US")}` : undefined)}
-        ${row("Markets consent", typeof body.consent_to_share_with_markets === "boolean" ? (body.consent_to_share_with_markets ? "Yes" : "No (hold for review)") : undefined)}
+        ${row("Current carrier", body.current_carrier ?? undefined)}
+        ${row("Expiring premium", typeof body.expiring_premium_usd === "number" ? `$${body.expiring_premium_usd.toLocaleString("en-US")}` : undefined)}
+        ${row("Markets consent", typeof body.consent === "boolean" ? (body.consent ? "Yes" : "No (hold for review)") : undefined)}
+        ${row("Enrichment confirmed", typeof body.enrichment_confirmed === "boolean" ? (body.enrichment_confirmed ? "Yes" : "No") : undefined)}
+        ${row("Flood concern", body.flood_concern_volunteered ? "Volunteered (passive-listener)" : undefined)}
+        ${row("Property mgmt", body.property_mgmt_disclosed ?? undefined)}
         ${row("Inquiry trigger", body.inquiry_trigger)}
       </table>
       ${portfolioBlock}
+      ${lossBlock}
       <h3 style="font-family:Georgia,serif; font-weight:400; font-size:16px; margin-top:24px;">Contact</h3>
       <table style="border-collapse:collapse; width:100%; border-top:1px solid #0B0B0C; border-bottom:1px solid #0B0B0C;">
         ${row("Name", body.contact?.name)}
+        ${row("Role", body.contact?.role)}
         ${row("Email", body.contact?.email)}
         ${row("Phone", body.contact?.phone)}
-        ${row("Role", body.contact?.role ? CONTACT_ROLE_LABELS[body.contact.role] : undefined)}
-        ${row("Preferred", body.contact?.preferred_method)}
       </table>
       ${
         body.conversation_full

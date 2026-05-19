@@ -364,13 +364,10 @@ async function runIntake(
  * ========================================================================= */
 
 const ASSET_CLASS_HINTS: Array<{ re: RegExp; cls: RateBandAssetClass }> = [
-  { re: /\b(apartment\s+building|multi[-\s]?family|multifamily)\b/i, cls: "multifamily" },
+  { re: /\b(apartment\s+building|apartment\s+complex|multi[-\s]?family|multifamily)\b/i, cls: "multifamily" },
   { re: /\bmixed[-\s]?use\b/i, cls: "mixed_use" },
   { re: /\b(sfr\s+portfolio|scattered[-\s]?site|single[-\s]?family\s+rentals)\b/i, cls: "sfr_portfolio" },
   { re: /\b(HOA|condo\s+association|homeowners\s+association)\b/i, cls: "hoa" },
-  { re: /\b(condo\s+unit|single\s+condo|the\s+unit\s+I\s+own)\b/i, cls: "condo_unit" },
-  { re: /\b(builders?[-\s]?risk|ground[-\s]?up|adaptive\s+reuse|new\s+construction)\b/i, cls: "builders_risk" },
-  { re: /\b(office|retail|industrial|warehouse|owner[-\s]?occupied)\b/i, cls: "small_commercial_re" },
 ];
 
 function deriveContextFromTranscript(messages: ChatMessage[]): RateBandContext {
@@ -401,7 +398,9 @@ function contextFromFacts(facts: PropertyFacts): RateBandContext {
   if (typeof facts.year_built === "number") out.year_built = facts.year_built;
   // Asset class can be inferred from land_use_desc on common cases. The
   // chat will still confirm with the user, but the slice surfaces a
-  // band immediately when the inference is clean.
+  // band immediately when the inference is clean. Habitational only —
+  // condo unit, small commercial RE, and builders risk are out of
+  // appetite as of C.S.1.7.1.
   const useDesc = (facts.land_use_desc ?? "").toLowerCase();
   if (typeof facts.units === "number" && facts.units >= 5 && useDesc.includes("residential")) {
     out.asset_class = "multifamily";
@@ -409,8 +408,6 @@ function contextFromFacts(facts: PropertyFacts): RateBandContext {
     out.asset_class = "multifamily";
   } else if (useDesc.includes("mixed")) {
     out.asset_class = "mixed_use";
-  } else if (useDesc.includes("condominium")) {
-    out.asset_class = "condo_unit";
   }
   return out;
 }

@@ -7,12 +7,9 @@ import {
 } from "./carbon-system-prompt";
 
 /**
- * Tests for the C.S.1.7.0g hallucination guardrail language in the
- * intake system prompt. The brief targets a production failure mode
- * where the LLM invented property facts on input strings that didn't
- * resolve cleanly (typos, missing-coverage markets). These assertions
- * pin the prohibition language so it can't be silently softened or
- * removed in a future prompt rewrite.
+ * C.S.1.7.0g hallucination guardrail + C.S.1.7.0h typo-confirmation
+ * language remain in the prompt. C.S.1.7.0k handoff trigger rules
+ * remain unchanged per the C.S.1.7.1 brief.
  */
 
 describe("CARBON_INTAKE_SYSTEM_PROMPT — hallucination guardrail", () => {
@@ -27,10 +24,6 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — hallucination guardrail", () => {
   });
 
   it("publishes the canonical no-records response verbatim", () => {
-    // This exact string is what the model should emit when enrichment
-    // returns nothing usable. A future prompt edit must not break this
-    // wording without an intentional update — production probes match
-    // against it.
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
       `"I couldn't find records for that address — can you confirm the spelling, city, and state?"`,
     );
@@ -46,14 +39,12 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — hallucination guardrail", () => {
     );
   });
 
-  it("calls out non-determinism as a failure mode (production bug fingerprint)", () => {
+  it("calls out non-determinism as a failure mode", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Same-input non-determinism");
   });
 
   it("directs the model to confirm when the formatted_address diverges from input", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "is that the property you meant?",
-    );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("is that the property you meant?");
   });
 });
 
@@ -91,11 +82,9 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — C.S.1.7.0h typo-confirmation tightenin
     );
   });
 
-  it("explicitly exempts pure normalization (capitalization, suffix, ZIP additions) from confirmation", () => {
+  it("explicitly exempts pure normalization from confirmation", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("pure normalization");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "do NOT require confirmation",
-    );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("do NOT require confirmation");
   });
 
   it("closes with 'when in doubt: confirm' to bias the model toward asking", () => {
@@ -103,33 +92,21 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — C.S.1.7.0h typo-confirmation tightenin
   });
 
   it("preserves the wrap-up sentinel for the client-side extraction trigger", () => {
-    // Defensive: the hallucination guardrail block was inserted
-    // upstream of the wrap-up section. Verify the sentinel is still
-    // in the prompt and still matches the exported constant.
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(INTAKE_WRAPUP_SENTINEL);
   });
 });
 
 /* =========================================================================
- * C.S.1.7.0j — Structured 10-field intake + hard handoff triggers
- * =========================================================================
- *
- * The intake stops being free-form Q&A and becomes a structured
- * brokerage flow with four explicit handoff escalations. These tests
- * pin the prompt language so the structure survives future prompt
- * edits — the brokerage behavior is load-bearing.
- *
- * Assertions are string-match on the rendered prompt content (we can't
- * deterministically test model runtime behavior in vitest). Production
- * probes verify the runtime behavior end-to-end.
+ * HARD HANDOFF TRIGGERS — preserved from C.S.1.7.0k (per the C.S.1.7.1
+ * brief: "Existing handoff trigger tests stay unchanged").
  * ========================================================================= */
 
-describe("CARBON_INTAKE_SYSTEM_PROMPT — HARD HANDOFF TRIGGERS (C.S.1.7.0j → C.S.1.7.0k)", () => {
+describe("CARBON_INTAKE_SYSTEM_PROMPT — HARD HANDOFF TRIGGERS", () => {
   it("includes the HARD HANDOFF TRIGGERS heading", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("HARD HANDOFF TRIGGERS");
   });
 
-  it("declares FIVE triggers (count language pinned for C.S.1.7.0k)", () => {
+  it("declares FIVE triggers", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("FIVE situations");
   });
 
@@ -165,10 +142,8 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — HARD HANDOFF TRIGGERS (C.S.1.7.0j → 
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain('Phrasing tag: "litigation matter"');
   });
 
-  it("documents trigger #5 — out-of-appetite asset class (C.S.1.7.0k addition)", () => {
+  it("documents trigger #5 — out-of-appetite asset class", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Out-of-appetite asset class");
-    // Example fingerprints — these are the canonical out-of-appetite classes
-    // the brokerage will not write in-house.
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/personal\s+auto/);
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("cannabis");
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("hospitality");
@@ -205,7 +180,7 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — HARD HANDOFF TRIGGERS (C.S.1.7.0j → 
   });
 });
 
-describe("CARBON_INTAKE_SYSTEM_PROMPT — PORTFOLIO DETECTION (C.S.1.7.0j)", () => {
+describe("CARBON_INTAKE_SYSTEM_PROMPT — PORTFOLIO DETECTION", () => {
   it("includes the PORTFOLIO DETECTION heading", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("PORTFOLIO DETECTION");
   });
@@ -231,84 +206,21 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — PORTFOLIO DETECTION (C.S.1.7.0j)", () 
   });
 });
 
-describe("CARBON_INTAKE_SYSTEM_PROMPT — 10-FIELD INTAKE SEQUENCE (C.S.1.7.0j)", () => {
-  it("includes the INTAKE SEQUENCE heading + 10-field framing", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("INTAKE SEQUENCE — 10 fields");
-  });
+/* =========================================================================
+ * C.S.1.7.1 — 8-turn habitational COPE intake sequence
+ * ========================================================================= */
 
-  it("names all 10 fields with their numbered labels", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("1. ADDRESS");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("2. ASSET CLASS");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("3. COVERAGE SCOPE");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("4. EARTHQUAKE EXPOSURE & INTEREST");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("5. FLOOD EXPOSURE & INTEREST");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("6. LOSS HISTORY");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("7. EFFECTIVE DATE");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("8. CURRENT CARRIER + EXPIRING PREMIUM");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("9. CONTACT");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("10. CONSENT TO SHARE WITH MARKETS");
-  });
-
-  it("includes coverage scope options (property only / property+liability / full package)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Property only");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Property + liability");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Full package");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("EPLI");
-  });
-
-  it("explains EQ context (excluded from standard property; DIC or standalone)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("EQ is excluded from standard property policies");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("DIC");
-  });
-
-  it("explains flood context (excluded from standard property; NFIP or private)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Flood is excluded from standard property policies");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("NFIP");
-  });
-
-  it("directs the model to fire Active Loss handoff if loss history reveals one", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "fire the Active Loss handoff trigger immediately",
-    );
-  });
-
-  it("requires all 10 fields captured AND no handoff fired before emitting wrap-up", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "When ALL ten fields have been captured AND no handoff trigger has fired",
-    );
-  });
-
-  it("forbids the wrap-up sentinel after a handoff trigger fired", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "Do not emit the wrap-up sentinel if a handoff trigger has fired",
-    );
-  });
-
-  it("supports out-of-order field capture (never re-ask)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Never re-ask a captured field");
-  });
-
-  it("includes condo_unit asset class option (matches CarbonIntakePayload.asset_type)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("single condo unit");
-  });
-});
-
-describe("CARBON_INTAKE_SYSTEM_PROMPT — 10-field sequence ORDERING (C.S.1.7.0k)", () => {
-  /** Pin the exact field order. The brief says "in order" — fields
-   *  must appear in the prompt sequentially so the model walks them
-   *  in the same order a brokerage would. */
-  it("emits the ten field headers in the documented 1→10 order with no skips", () => {
+describe("CARBON_INTAKE_SYSTEM_PROMPT — 8-turn habitational COPE sequence (C.S.1.7.1)", () => {
+  it("emits the eight turn headers in 1→8 order with no skips", () => {
     const headers = [
-      "1. ADDRESS",
-      "2. ASSET CLASS",
-      "3. COVERAGE SCOPE",
-      "4. EARTHQUAKE EXPOSURE & INTEREST",
-      "5. FLOOD EXPOSURE & INTEREST",
-      "6. LOSS HISTORY",
-      "7. EFFECTIVE DATE",
-      "8. CURRENT CARRIER + EXPIRING PREMIUM",
-      "9. CONTACT",
-      "10. CONSENT TO SHARE WITH MARKETS",
+      "TURN 1 — ADDRESS",
+      "TURN 2 — ENRICHMENT CONFIRMATION",
+      "TURN 3 — ASSET CLASS CONFIRM",
+      "TURN 4 — YEAR BUILT + SPRINKLERED",
+      "TURN 5 — ELECTRICAL TYPE",
+      "TURN 6 — ANNUAL RENTAL INCOME",
+      "TURN 7 — LOSS HISTORY",
+      "TURN 8 — NAMED INSURED + CONTACT + CONSENT",
     ];
     let lastIdx = -1;
     for (const h of headers) {
@@ -318,32 +230,119 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — 10-field sequence ORDERING (C.S.1.7.0k
     }
   });
 
-  it("instructs the model that the sequence is NOT arbitrary (load-bearing order)", () => {
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("The sequence is not arbitrary");
-  });
-
-  it("explains why each leading field is positioned first (ADDRESS, ASSET CLASS, COVERAGE SCOPE)", () => {
-    // The prompt names the reason each early field comes where it does
-    // — ADDRESS first because enrich_property reduces work; ASSET CLASS
-    // second because it gates the rate-band lookup; COVERAGE SCOPE
-    // third because it gates carrier selection.
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("enrichment tool reduces the rest");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("gates the rate-band lookup");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("controls what carriers we approach");
+  it("labels the sequence as the 8-turn habitational COPE flow", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("8-turn habitational COPE");
   });
 
   it("preserves the never-re-ask rule", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Never re-ask a captured field");
   });
 
-  it("requires ALL 10 fields + no handoff before wrap-up sentinel can fire", () => {
+  it("describes Turn 2 as a bulleted-list confirmation that flips enrichment_confirmed", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Pulling this up — looks like:");
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
-      "When ALL ten fields have been captured AND no handoff trigger has fired",
+      "Correct me if anything's off, especially units, square footage, or year built.",
     );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("sets enrichment_confirmed: true");
+  });
+
+  it("Turn 4 asks for sprinklered + central station alarm explicitly", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("sprinklered");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("central station fire alarm");
+  });
+
+  it("Turn 5 lists all 7 electrical_type options for prompt-mapping", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("standard breakers");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Federal Pacific Stab-Lok");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("knob-and-tube");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("aluminum branch");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("fuse box");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("mixed");
+  });
+
+  it("Turn 5 flags the three carrier-killer electrical signals as non-handoff", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("carrier-killer");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("this is NOT an out-of-appetite handoff");
+  });
+
+  it("Turn 6 marks expiring premium as a SOFT ask", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("SOFT ask");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Premium is optional");
+  });
+
+  it("Turn 7 EXPLICITLY forbids requesting loss runs at intake", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("DO NOT REQUEST LOSS RUNS AT INTAKE");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("self-reported");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("specialist gathers them post-handoff");
+  });
+
+  it("Turn 7 routes an active loss directly to the Active Loss handoff trigger", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("fire the Active Loss handoff trigger immediately");
+  });
+
+  it("Turn 8 separates named_insured (entity) from contact (human)", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("entity on the dec page");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("human reaching out");
+  });
+
+  it("wrap-up only fires when all 8 turns complete AND no handoff fired", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "When all 8 turns are complete",
+    );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("no handoff trigger has fired");
+  });
+
+  it("forbids the wrap-up sentinel after a handoff trigger fired", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "Do not emit the wrap-up sentinel if a handoff trigger has fired",
+    );
+  });
+
+  it("forbids asking the user about construction type (populated from enrich_property)", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Never ask the user about construction type");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("construction is NEVER user-asked");
+  });
+
+  it("names the four habitational asset classes Carbon writes", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("apartment buildings (multifamily)");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("mixed-use");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("SFR portfolios");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("condo HOAs");
   });
 });
 
-describe("CARBON_INTAKE_SYSTEM_PROMPT — PRICING + RATE-BAND wiring (C.S.1.7.0k)", () => {
+/* =========================================================================
+ * C.S.1.7.1 — Passive listener instructions
+ * ========================================================================= */
+
+describe("CARBON_INTAKE_SYSTEM_PROMPT — passive listeners (C.S.1.7.1)", () => {
+  it("declares the PASSIVE LISTENERS section", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("PASSIVE LISTENERS");
+  });
+
+  it("documents flood_concern_volunteered with the trigger fingerprints", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("flood_concern_volunteered");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("flood, FEMA zone, water intrusion");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/Do NOT proactively ask about flood/);
+  });
+
+  it("documents property_mgmt_disclosed with the capture rule", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("property_mgmt_disclosed");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("third-party property manager");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/Do NOT proactively ask/);
+  });
+
+  it("explains why flood is passive-listener (excluded from standard property; post-handoff)", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("excluded from the standard property form");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("post-handoff");
+  });
+});
+
+/* =========================================================================
+ * Pricing wiring + cache structure (preserved from C.S.1.7.0k)
+ * ========================================================================= */
+
+describe("CARBON_INTAKE_SYSTEM_PROMPT — PRICING + RATE-BAND wiring", () => {
   it("declares the PRICING LANGUAGE block pointing at the rate-band slice", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("PRICING LANGUAGE");
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("RATE-BAND INDICATION SLICE");
@@ -353,7 +352,7 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — PRICING + RATE-BAND wiring (C.S.1.7.0k
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("after the cache breakpoint");
   });
 
-  it("instructs the model NOT to paste disclaimer text itself (the route handles it)", () => {
+  it("instructs the model NOT to paste disclaimer text itself", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/do NOT paste any disclaimer text/i);
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("system appends");
   });
@@ -363,15 +362,12 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — PRICING + RATE-BAND wiring (C.S.1.7.0k
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("indication RANGE");
   });
 
-  it("redirects out-of-appetite asks to the new handoff trigger (not the soft redirect)", () => {
-    // The earlier prompt redirected non-CRE asks to "speak with a
-    // generalist broker." C.S.1.7.0k unifies that under the
-    // Out-of-appetite handoff trigger so it routes consistently.
+  it("redirects out-of-appetite asks to the handoff trigger", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("fire the Out-of-appetite handoff trigger");
   });
 });
 
-describe("buildIntakeSystemBlocks — cache-friendly structure (C.S.1.7.0k)", () => {
+describe("buildIntakeSystemBlocks — cache-friendly structure", () => {
   it("returns a two-block array: stable prompt + dynamic slice", () => {
     const blocks = buildIntakeSystemBlocks({});
     expect(blocks).toHaveLength(2);
@@ -395,9 +391,6 @@ describe("buildIntakeSystemBlocks — cache-friendly structure (C.S.1.7.0k)", ()
   });
 
   it("stable block content is IDENTICAL across different rate-band contexts (cache-stability)", () => {
-    // The cache hit only fires if the stable block's text is byte-for-
-    // byte identical across calls. Any per-conversation data must live
-    // in the dynamic slice, never in the stable block.
     const empty = buildIntakeSystemBlocks({});
     const withCA = buildIntakeSystemBlocks({
       asset_class: "multifamily",
@@ -428,69 +421,89 @@ describe("buildIntakeSystemBlocks — cache-friendly structure (C.S.1.7.0k)", ()
   });
 });
 
-describe("CARBON_EXTRACTION_SYSTEM_PROMPT — C.S.1.7.0j schema additions", () => {
-  it("documents the coverage_scope union", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
-      "'property_only' | 'property_liability' | 'full_package'",
-    );
-  });
+/* =========================================================================
+ * Extraction prompt — C.S.1.7.1 schema documentation
+ * ========================================================================= */
 
-  it("documents EQ + flood interest unions", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
-      "'currently_carry' | 'looking_to_add' | 'not_interested'",
-    );
-  });
-
-  it("documents handoff{reason} with all 4 trigger categories", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("coverage_interpretation");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("portfolio_tiv_over_10m");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("active_loss");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("litigation_pending");
-  });
-
-  it("documents portfolio{property_count,total_tiv_usd}", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("property_count");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("total_tiv_usd");
-  });
-
-  it("documents contact.role union", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
-      "'owner' | 'asset_manager' | 'property_manager' | 'broker_referral'",
-    );
-  });
-
-  it("includes condo_unit in asset_type union (matches intake prompt + payload)", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'condo_unit'");
-  });
-
-  it("documents effective_date + expiring_premium extraction rules", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("effective_date");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("expiring_premium");
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("$18,500");
-  });
-
-  it("documents consent_to_share_with_markets boolean", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("consent_to_share_with_markets");
-  });
-
-  it("instructs handoff is ONLY present when a trigger fired (count updated to FIVE in C.S.1.7.0k)", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
-      "ONLY present if one of the FIVE hard-handoff triggers fired",
-    );
-  });
-});
-
-describe("CARBON_EXTRACTION_SYSTEM_PROMPT — C.S.1.7.0k tool-use migration", () => {
+describe("CARBON_EXTRACTION_SYSTEM_PROMPT — C.S.1.7.1 habitational COPE schema", () => {
   it("instructs the model to emit by calling the extract_intake tool exactly once", () => {
     expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("extract_intake tool exactly once");
   });
 
-  it("includes out_of_appetite in the handoff reason union", () => {
+  it("explicitly forbids free-text output", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("Do not emit any free text");
+  });
+
+  it("documents asset_class as 5-value habitational union (no condo_unit, no commercial)", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
+      "'multifamily' | 'mixed_use' | 'sfr_portfolio' | 'hoa' | 'unknown'",
+    );
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toContain("'condo_unit'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toContain("'small_commercial_re'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toContain("'builders_risk'");
+  });
+
+  it("DOES NOT document coverage_scope / eq_interest / flood_interest (dropped)", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toMatch(/coverage_scope/);
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toMatch(/eq_interest/);
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).not.toMatch(/flood_interest/);
+  });
+
+  it("documents the new habitational COPE fields", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("square_footage");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("sprinklered");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("central_station_alarm");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("electrical_type");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("gross_annual_rents");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("expiring_premium_usd");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("loss_history_5yr");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("flood_concern_volunteered");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("property_mgmt_disclosed");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("named_insured");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("consent");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("enrichment_confirmed");
+  });
+
+  it("documents the 7-value electrical_type union", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'standard_breakers'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'federal_pacific_stab_lok'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'knob_and_tube'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'aluminum_branch'");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("'fuse_box'");
+  });
+
+  it("documents loss_history_5yr as array of {year, type, approx_amount_usd}", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
+      "Array<{ year: number; type: string; approx_amount_usd: number }>",
+    );
+  });
+
+  it("instructs construction_type is populated from enrich_property, never user-asked", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
+      "populated from enrich_property; never user-asked",
+    );
+  });
+
+  it("instructs the model not to include loss-run data in loss_history_5yr", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("Do NOT include loss-run data");
+  });
+
+  it("documents handoff{reason} with all five trigger categories incl. out_of_appetite", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("coverage_interpretation");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("portfolio_tiv_over_10m");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("active_loss");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("litigation_pending");
     expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("out_of_appetite");
   });
 
-  it("explicitly forbids free-text output (tool args are the contract)", () => {
-    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("Do not emit any free text");
+  it("instructs handoff is ONLY present when a trigger fired (FIVE)", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain(
+      "ONLY present if one of the FIVE hard-handoff triggers fired",
+    );
+  });
+
+  it("documents portfolio{property_count, total_tiv_usd}", () => {
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("property_count");
+    expect(CARBON_EXTRACTION_SYSTEM_PROMPT).toContain("total_tiv_usd");
   });
 });
-
