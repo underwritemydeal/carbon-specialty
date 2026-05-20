@@ -267,7 +267,7 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — 8-turn habitational COPE sequence (C.S
 
   it("Turn 6 marks expiring premium as a SOFT ask", () => {
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("SOFT ask");
-    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Premium is optional");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/Expiring premium \(optional/);
   });
 
   it("Turn 7 EXPLICITLY forbids requesting loss runs at intake", () => {
@@ -308,6 +308,71 @@ describe("CARBON_INTAKE_SYSTEM_PROMPT — 8-turn habitational COPE sequence (C.S
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("mixed-use");
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("SFR portfolios");
     expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("condo HOAs");
+  });
+});
+
+/* =========================================================================
+ * C.S.1.7.2 — Batched asks (Turns 6 + 8) + expiring-premium bug fix
+ * =========================================================================
+ *
+ * Production transcript (1266 Stanyan St): the contact turn fragmented
+ * across five separate exchanges because the model asked open-ended and
+ * the prospect under-answered each time. The model also said "I'll note
+ * that as the expiring premium for now" when no premium was given.
+ * These tests pin the batched-ask format + the expiring-premium fix.
+ * ========================================================================= */
+
+describe("CARBON_INTAKE_SYSTEM_PROMPT — batched asks (C.S.1.7.2)", () => {
+  it("declares the BATCHED ASKS rule", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("BATCHED ASKS");
+  });
+
+  it("names Turns 6 and 8 as the deliberate batched exceptions to one-or-two-per-turn pacing", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "Turns 6 and 8 are deliberate exceptions",
+    );
+  });
+
+  it("instructs a partial answer to be re-asked as ONE consolidated bullet list, not dribbled", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(
+      /re-present the REMAINING items as a single compact bullet list/,
+    );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("ONE consolidated follow-up");
+  });
+
+  it("forbids the 'last question' / 'one more thing' announcements", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(
+      /Never announce "last question," "one more thing," or "last few items"/,
+    );
+  });
+
+  it("Turn 6 phrasing is a bulleted checklist of the four items", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Gross annual rental income");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Effective date for the new coverage");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Current carrier");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/- Expiring premium \(optional/);
+  });
+
+  it("Turn 6 forbids the 'I'll note that as the expiring premium' production bug", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      `do NOT say anything like "I'll note that as the expiring premium for now"`,
+    );
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("Silently record expiring_premium_usd as null");
+  });
+
+  it("Turn 8 phrasing is a bulleted 'please provide' checklist of all six items", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Named insured");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Your name");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Your role");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Email");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain("- Phone");
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toMatch(/- Consent:/);
+  });
+
+  it("Turn 8 caps the partial-answer re-ask at one consolidated follow-up", () => {
+    expect(CARBON_INTAKE_SYSTEM_PROMPT).toContain(
+      "do not chase them one question per turn",
+    );
   });
 });
 
