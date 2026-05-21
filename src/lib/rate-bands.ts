@@ -43,7 +43,8 @@
  *   - Auditable. A broker can open this file and see every number.
  *   - Cache-friendly. The rate-band slice is the only part of the
  *     system prompt that changes per turn; the stable prompt above it
- *     stays cached. See buildIntakeSystemBlocks in carbon-system-prompt.ts.
+ *     stays cached. The route assembles the two-block system payload —
+ *     see /api/chat (the stable prompt comes from buildSystemPrompt).
  */
 
 /* =========================================================================

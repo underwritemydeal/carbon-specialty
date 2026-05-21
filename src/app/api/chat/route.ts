@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  buildIntakeSystemBlocks,
-  CARBON_EXTRACTION_SYSTEM_PROMPT,
-} from "@/lib/carbon-system-prompt";
+import { CARBON_EXTRACTION_SYSTEM_PROMPT } from "@/lib/extraction-prompt";
+import { buildSystemPrompt } from "@/lib/system-prompt-builder";
+import { getTenantConfig, getDefaultTenantId } from "@/lib/tenants/registry";
+import type { TenantIntakeConfig } from "@/lib/tenants";
 import {
   TOOLS,
   EXTRACT_TOOLS,
@@ -15,6 +15,7 @@ import {
   type DisclaimerKind,
 } from "@/lib/disclaimers";
 import {
+  buildRateBandSlice,
   normalizeState,
   type RateBandAssetClass,
   type RateBandContext,
@@ -126,7 +127,26 @@ export async function POST(req: Request) {
   if (mode === "extract") {
     return runExtract(anthropic, messages);
   }
-  return runIntake(anthropic, messages, origin);
+
+  // Multi-tenant resolution (C.S.1.6.5). `tenantId` is optional; absent
+  // means the default tenant. An unknown / disabled tenant is a 400 —
+  // the client falls through to contact-form mode like any BAD_REQUEST.
+  const rawTenantId = (body as { tenantId?: unknown }).tenantId;
+  const tenantId =
+    typeof rawTenantId === "string" && rawTenantId.trim()
+      ? rawTenantId.trim()
+      : getDefaultTenantId();
+  const tenantConfig = getTenantConfig(tenantId);
+  if (!tenantConfig) {
+    console.warn(`[carbon-chat] BAD_REQUEST — unknown or inactive tenant "${tenantId}"`);
+    return envelopeError(
+      `Unknown or inactive tenant: ${tenantId}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  return runIntake(anthropic, messages, origin, tenantConfig);
 }
 
 /* =========================================================================
@@ -184,7 +204,11 @@ async function runIntake(
   anthropic: Anthropic,
   messages: ChatMessage[],
   origin: string,
+  config: TenantIntakeConfig,
 ) {
+  // The stable per-tenant system prompt — built once, cached across the
+  // tool-use loop's iterations via the ephemeral breakpoint below.
+  const stablePrompt = buildSystemPrompt(config);
   // Working copy. The loop appends assistant and user (tool_result) turns.
   /* eslint-disable @typescript-eslint/no-unused-vars */
   type WireMessage =
@@ -221,7 +245,20 @@ async function runIntake(
       resp = await anthropic.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: buildIntakeSystemBlocks(rateBandContext),
+        // Two-block system payload: [0] the stable per-tenant prompt
+        // with an ephemeral cache breakpoint, [1] the dynamic rate-band
+        // slice that varies per turn (no cache_control).
+        system: [
+          {
+            type: "text",
+            text: stablePrompt,
+            cache_control: { type: "ephemeral" },
+          },
+          {
+            type: "text",
+            text: buildRateBandSlice(rateBandContext),
+          },
+        ],
         tools: TOOLS,
         messages: wire as Anthropic.MessageParam[],
       });
@@ -235,7 +272,7 @@ async function runIntake(
 
     if (resp.stop_reason !== "tool_use") {
       const rawText = collectText(resp.content);
-      const { text, applied } = appendDisclaimers(rawText);
+      const { text, applied } = finalizeText(rawText, config);
       return NextResponse.json<ChatResponseEnvelope>({
         ok: true,
         text,
@@ -253,7 +290,7 @@ async function runIntake(
       // Defensive: stop_reason said tool_use but no blocks found. Treat
       // as a natural stop with whatever text is present.
       const rawText = collectText(resp.content);
-      const { text, applied } = appendDisclaimers(rawText);
+      const { text, applied } = finalizeText(rawText, config);
       return NextResponse.json<ChatResponseEnvelope>({
         ok: true,
         text,
@@ -449,6 +486,30 @@ function collectText(blocks: Anthropic.ContentBlock[]): string {
     .map((b) => b.text)
     .join("")
     .trim();
+}
+
+/**
+ * Post-processes the assistant's final text for the response envelope.
+ *
+ * Disclaimers are NEVER passed to the model — they are concatenated
+ * here, after generation (C.S.1.6.5):
+ *
+ *  - When the tenant's wrap-up sentinel is present, the intake is
+ *    complete: append the tenant's three locked disclaimers as a
+ *    triple-newline-separated footer.
+ *  - Otherwise, fall back to the C.S.1.7 pricing/coverage-language
+ *    detection (`appendDisclaimers`) so a mid-conversation indication
+ *    range still carries its locked disclaimer.
+ */
+function finalizeText(
+  rawText: string,
+  config: TenantIntakeConfig,
+): { text: string; applied: DisclaimerKind[] } {
+  if (rawText.includes(config.agent.wrapUpSentinel)) {
+    const footer = config.disclaimers.join("\n\n\n");
+    return { text: `${rawText}\n\n\n${footer}`, applied: [] };
+  }
+  return appendDisclaimers(rawText);
 }
 
 /* =========================================================================

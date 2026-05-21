@@ -11,7 +11,7 @@ import {
   type ChatMessage,
   type CarbonContactPayload,
 } from "@/lib/carbon-intake";
-import { INTAKE_WRAPUP_SENTINEL } from "@/lib/carbon-system-prompt";
+import { carbonSpecialtyConfig } from "@/lib/tenants/carbon-specialty";
 import { loadGooglePlaces } from "@/lib/google-places-loader";
 import {
   getSpeechRecognitionCtor,
@@ -27,6 +27,10 @@ const INITIAL_GREETING = `Hi — I'm Carbon, the AI intake specialist at Carbon 
 I help building owners and operators get the right specialist on a real estate insurance question. Tell me a little about the building or schedule you're looking at and I'll capture what a specialist needs to start.`;
 
 const INITIAL_MESSAGES: ChatMessage[] = [{ role: "assistant", content: INITIAL_GREETING }];
+
+/** Wrap-up sentinel — sourced from the tenant config as of C.S.1.6.5
+ *  (was a named export of the now-removed carbon-system-prompt.ts). */
+const INTAKE_WRAPUP_SENTINEL = carbonSpecialtyConfig.agent.wrapUpSentinel;
 
 type Mode = "chat" | "contact-form" | "done";
 
