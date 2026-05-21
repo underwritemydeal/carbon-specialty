@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { enrichAddress, normalizeRealieFields, buildStreetViewUrl } from "./route";
+
+vi.mock("@/lib/posthog-server", () => ({
+  captureServerEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { enrichAddress, normalizeRealieFields, buildStreetViewUrl, POST } from "./route";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 /**
  * Mock-based unit tests for the enrichment composer.
@@ -489,5 +495,74 @@ describe("buildStreetViewUrl", () => {
     expect(url).toContain("location=1247+Pine+Ave%2C+Long+Beach%2C+CA");
     expect(url).toContain("key=GKEY");
     expect(url).toContain("size=640x400");
+  });
+});
+
+/* =========================================================================
+ * C.S.1.8 — POST handler PostHog instrumentation
+ * ========================================================================= */
+
+/** AZ geocoding response — non-CA, so the CA county-direct path is
+ *  skipped and the composer goes straight to Realie. */
+function geocodingAZ() {
+  return new Response(
+    JSON.stringify({
+      status: "OK",
+      results: [
+        {
+          formatted_address: "1418 E Edgemont Ave, Phoenix, AZ 85006, USA",
+          geometry: { location: { lat: 33.46, lng: -112.05 } },
+          address_components: [
+            { long_name: "1418", short_name: "1418", types: ["street_number"] },
+            { long_name: "East Edgemont Avenue", short_name: "E Edgemont Ave", types: ["route"] },
+            { long_name: "Phoenix", short_name: "Phoenix", types: ["locality"] },
+            { long_name: "Arizona", short_name: "AZ", types: ["administrative_area_level_1"] },
+            { long_name: "Maricopa County", short_name: "Maricopa County", types: ["administrative_area_level_2"] },
+            { long_name: "85006", short_name: "85006", types: ["postal_code"] },
+          ],
+        },
+      ],
+    }),
+    { status: 200 },
+  );
+}
+
+function enrichRequest(address = "1418 E Edgemont Ave, Phoenix AZ") {
+  return new Request("http://localhost/api/property/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address }),
+  });
+}
+
+describe("POST /api/property/enrich — analytics", () => {
+  it("emits enrichment_succeeded when at least one source returns", async () => {
+    // Geocoding + synthetic Street View succeed; Realie 404s.
+    mockFetch((url) =>
+      url.includes("maps.googleapis.com/maps/api/geocode")
+        ? geocodingAZ()
+        : new Response("not found", { status: 404 }),
+    );
+
+    const res = await POST(enrichRequest());
+    expect(res.status).toBe(200);
+    expect(captureServerEvent).toHaveBeenCalledWith("enrichment_succeeded", "server-anonymous", {
+      sources_succeeded: ["geocoding", "streetview"],
+      has_parcel_data: false,
+      has_street_view: true,
+    });
+  });
+
+  it("emits enrichment_failed when every source fails", async () => {
+    // No keys → geocoding, Realie, and Street View all unavailable.
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    delete process.env.REALIE_API_TOKEN;
+
+    const res = await POST(enrichRequest());
+    expect(res.status).toBe(502);
+    expect(captureServerEvent).toHaveBeenCalledWith("enrichment_failed", "server-anonymous", {
+      sources_failed: ["geocoding", "realie", "streetview"],
+      error_reason: "all_sources_failed",
+    });
   });
 });

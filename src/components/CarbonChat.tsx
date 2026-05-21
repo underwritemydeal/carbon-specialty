@@ -21,6 +21,7 @@ import {
   type SpeechRecognitionLike,
 } from "@/lib/voice-client";
 import { track } from "@/lib/analytics";
+import { usePostHog } from "posthog-js/react";
 
 const INITIAL_GREETING = `Hi — I'm Carbon, the AI intake specialist at Carbon Specialty Insurance.
 
@@ -31,6 +32,27 @@ const INITIAL_MESSAGES: ChatMessage[] = [{ role: "assistant", content: INITIAL_G
 /** Wrap-up sentinel — sourced from the tenant config as of C.S.1.6.5
  *  (was a named export of the now-removed carbon-system-prompt.ts). */
 const INTAKE_WRAPUP_SENTINEL = carbonSpecialtyConfig.agent.wrapUpSentinel;
+
+/** Tenant id stamped on every C.S.1.8 PostHog event. The chat is
+ *  single-tenant today; this is the one place to widen later. */
+const TENANT_ID = carbonSpecialtyConfig.id;
+
+/** Detects whether an assistant reply is a hard-handoff routing
+ *  message and, if so, which trigger fired. Matches the leading clause
+ *  of each trigger's configured `specialistMessage` (the builder
+ *  instructs the model to say it). Returns the trigger id or null.
+ *
+ *  Heuristic by nature — if the model heavily paraphrases the routing
+ *  line this returns null and `handoff_triggered` simply isn't sent. */
+function detectHandoffTriggerId(reply: string): string | null {
+  for (const trigger of carbonSpecialtyConfig.intake.hardHandoffTriggers) {
+    const leadClause = trigger.specialistMessage.split(/[.—]/)[0].trim();
+    if (leadClause.length >= 15 && reply.includes(leadClause)) {
+      return trigger.id;
+    }
+  }
+  return null;
+}
 
 type Mode = "chat" | "contact-form" | "done";
 
@@ -56,6 +78,23 @@ export function CarbonChat({
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const referenceRef = useRef<string>(generateReferenceId());
+
+  // C.S.1.8 — PostHog. `usePostHog()` returns the singleton wired up by
+  // PostHogProvider. `handoffFiredRef` keeps `handoff_triggered` to one
+  // emit per conversation.
+  const posthog = usePostHog();
+  const handoffFiredRef = useRef(false);
+  const captureEvent = useCallback(
+    (event: string, props: Record<string, unknown>) => {
+      try {
+        // $ip suppresses geo-IP; props carry no PII by contract.
+        posthog?.capture?.(event, { ...props, $ip: "0.0.0.0" });
+      } catch {
+        /* analytics is never load-bearing */
+      }
+    },
+    [posthog],
+  );
 
   // Contact-form fallback state
   const [contactName, setContactName] = useState("");
@@ -110,6 +149,11 @@ export function CarbonChat({
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, thinking, mode]);
+
+  // C.S.1.8 — PostHog: fires when the chat panel opens.
+  useEffect(() => {
+    if (open) captureEvent("chat_opened", { tenant_id: TENANT_ID });
+  }, [open, captureEvent]);
 
   // C.S.1.6.2 — Browser-side feature probe for the Web Speech API.
   // Runs once on mount. We never render the mic button until this
@@ -290,7 +334,11 @@ export function CarbonChat({
       setMessages(history);
       track("cs_chat_user_message", { length: text.length, voice: voiceTurn });
       setThinking(true);
-      setPropertyLookup(looksLikeAddress(text));
+      // C.S.1.8 — PostHog `address_submitted` fires on the same
+      // address-detection condition that drives the lookup status line.
+      const isAddress = looksLikeAddress(text);
+      setPropertyLookup(isAddress);
+      if (isAddress) captureEvent("address_submitted", { tenant_id: TENANT_ID });
 
       // C.S.1.6.1 — autocomplete is intake-address-only. After the
       // first user message, tear it down so renewal-date / contact
@@ -363,10 +411,25 @@ export function CarbonChat({
       setThinking(false);
       setPropertyLookup(false);
 
+      // C.S.1.8 — PostHog: hard-handoff routing detected in the reply.
+      // Once per conversation.
+      const handoffId = detectHandoffTriggerId(reply);
+      if (handoffId && !handoffFiredRef.current) {
+        handoffFiredRef.current = true;
+        captureEvent("handoff_triggered", {
+          tenant_id: TENANT_ID,
+          trigger_id: handoffId,
+        });
+      }
+
       // Wrap-up sentinel detected → run extraction + submit
       if (reply.includes(INTAKE_WRAPUP_SENTINEL) && !submitted) {
         setSubmitted(true);
         track("cs_chat_intake_completed", { reference: referenceRef.current });
+        captureEvent("intake_completed", {
+          tenant_id: TENANT_ID,
+          reference_id: referenceRef.current,
+        });
         try {
           const extracted = await extractIntakePayload(after);
           const payload = buildIntakePayload(extracted, after, referenceRef.current);
@@ -397,7 +460,7 @@ export function CarbonChat({
         }
       }
     },
-    [messages, submitted],
+    [messages, submitted, captureEvent],
   );
 
   // Auto-send the initial message from the hero input
@@ -550,6 +613,7 @@ export function CarbonChat({
     setVoiceTurns(new Set());
     autoPlayedRef.current = new Set();
     nextTurnVoiceRef.current = false;
+    handoffFiredRef.current = false;
     referenceRef.current = generateReferenceId();
     // Reset fully — including the first-message autocomplete.
     setAutocompleteEnabled(true);

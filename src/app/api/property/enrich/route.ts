@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PropertyFacts, EnrichmentSource } from "@/lib/property-facts";
 import { fetchCACounty } from "@/lib/fetch-ca-county";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 
@@ -54,8 +55,21 @@ export async function POST(req: Request) {
     result.sources_succeeded.length === 0 &&
     result.sources_failed.length > 0
   ) {
+    await captureServerEvent("enrichment_failed", "server-anonymous", {
+      sources_failed: result.sources_failed,
+      error_reason: "all_sources_failed",
+    });
     return NextResponse.json(result, { status: 502 });
   }
+  await captureServerEvent("enrichment_succeeded", "server-anonymous", {
+    sources_succeeded: result.sources_succeeded,
+    // Parcel data = any source other than the geocoder / synthetic
+    // Street View URL (i.e. Realie or a CA county-direct hit).
+    has_parcel_data: result.sources_succeeded.some(
+      (s) => s !== "geocoding" && s !== "streetview",
+    ),
+    has_street_view: result.sources_succeeded.includes("streetview"),
+  });
   return NextResponse.json(result, { status: 200 });
 }
 

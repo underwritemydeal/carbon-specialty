@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logToolResult } from "./route";
+
+vi.mock("@/lib/posthog-server", () => ({
+  captureServerEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { logToolResult, POST } from "./route";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 /**
  * Tests for the C.S.1.7.0g structured tool-result logger. The brief
@@ -189,5 +195,50 @@ describe("logToolResult — C.S.1.7.0g structured emit", () => {
     expect(line).toMatch(/^\[carbon-chat:tool-result\] /);
     const parsed = JSON.parse(line.split("] ")[1]);
     expect(parsed.log_serialize_error).toBeDefined();
+  });
+});
+
+/* =========================================================================
+ * C.S.1.8 — chat_error PostHog instrumentation
+ * ========================================================================= */
+
+describe("POST /api/chat — chat_error analytics", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(captureServerEvent).mockClear();
+  });
+
+  function chatRequest(body: unknown) {
+    return new Request("http://localhost/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("emits chat_error on a BAD_REQUEST when ANTHROPIC_API_KEY is missing", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+
+    const res = await POST(chatRequest({ messages: [{ role: "user", content: "hi" }] }));
+
+    expect(res.status).toBe(503);
+    expect(captureServerEvent).toHaveBeenCalledWith("chat_error", "server-anonymous", {
+      error_kind: "BAD_REQUEST",
+      tenant_id: "unknown",
+    });
+  });
+
+  it("emits chat_error carrying the tenant id on an unknown-tenant 400", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+
+    const res = await POST(
+      chatRequest({ messages: [{ role: "user", content: "hi" }], tenantId: "nope" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(captureServerEvent).toHaveBeenCalledWith("chat_error", "server-anonymous", {
+      error_kind: "BAD_REQUEST",
+      tenant_id: "nope",
+    });
   });
 });

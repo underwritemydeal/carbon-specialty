@@ -4,6 +4,7 @@ import { CARBON_EXTRACTION_SYSTEM_PROMPT } from "@/lib/extraction-prompt";
 import { buildSystemPrompt } from "@/lib/system-prompt-builder";
 import { getTenantConfig, getDefaultTenantId } from "@/lib/tenants/registry";
 import type { TenantIntakeConfig } from "@/lib/tenants";
+import { captureServerEvent } from "@/lib/posthog-server";
 import {
   TOOLS,
   EXTRACT_TOOLS,
@@ -143,6 +144,7 @@ export async function POST(req: Request) {
       `Unknown or inactive tenant: ${tenantId}`,
       "BAD_REQUEST",
       400,
+      tenantId,
     );
   }
 
@@ -167,7 +169,7 @@ async function runExtract(anthropic: Anthropic, messages: ChatMessage[]) {
       messages: messages as Anthropic.MessageParam[],
     });
   } catch (e) {
-    return handleAnthropicError(e);
+    return handleAnthropicError(e, getDefaultTenantId());
   }
 
   const toolUse = resp.content.find(
@@ -180,6 +182,7 @@ async function runExtract(anthropic: Anthropic, messages: ChatMessage[]) {
       "Extraction model did not return a structured payload.",
       "EXTRACT_NO_TOOL_USE",
       502,
+      getDefaultTenantId(),
     );
   }
 
@@ -263,7 +266,7 @@ async function runIntake(
         messages: wire as Anthropic.MessageParam[],
       });
     } catch (e) {
-      return handleAnthropicError(e);
+      return handleAnthropicError(e, config.id);
     }
 
     // Append the model's response (text + tool_use blocks) verbatim so
@@ -377,6 +380,7 @@ async function runIntake(
     "The assistant got stuck in a tool loop. Please rephrase your request.",
     "LOOP_EXHAUSTED",
     500,
+    config.id,
   );
 }
 
@@ -584,39 +588,49 @@ function findLatestUserText(messages: ChatMessage[]): string | null {
   return null;
 }
 
-function envelopeError(
+/** Builds an error envelope AND emits the C.S.1.8 `chat_error` PostHog
+ *  event. Async so the event flushes before the response is returned;
+ *  callers `return` the promise. `tenantId` defaults to "unknown" for
+ *  failures that occur before tenant resolution. */
+async function envelopeError(
   message: string,
   kind: NonNullable<ChatResponseEnvelope["error_kind"]>,
   status: number,
+  tenantId: string = "unknown",
 ) {
+  await captureServerEvent("chat_error", "server-anonymous", {
+    error_kind: kind,
+    tenant_id: tenantId,
+  });
   return NextResponse.json<ChatResponseEnvelope>(
     { ok: false, error: message, error_kind: kind },
     { status },
   );
 }
 
-function handleAnthropicError(e: unknown) {
+function handleAnthropicError(e: unknown, tenantId: string = "unknown") {
   if (e instanceof Anthropic.APIError) {
     const status = e.status ?? 0;
     if (status === 401 || status === 403) {
       console.error("[carbon-chat] ANTHROPIC_AUTH", status, e.message);
-      return envelopeError("Chat service authentication failed.", "ANTHROPIC_AUTH", 503);
+      return envelopeError("Chat service authentication failed.", "ANTHROPIC_AUTH", 503, tenantId);
     }
     if (status === 429) {
       console.warn("[carbon-chat] ANTHROPIC_RATE_LIMIT", e.message);
-      return envelopeError("Chat service is rate-limited right now.", "ANTHROPIC_RATE_LIMIT", 429);
+      return envelopeError("Chat service is rate-limited right now.", "ANTHROPIC_RATE_LIMIT", 429, tenantId);
     }
     if (status >= 500) {
       console.error("[carbon-chat] ANTHROPIC_SERVER", status, e.message);
-      return envelopeError("Chat service is having trouble.", "ANTHROPIC_SERVER", 502);
+      return envelopeError("Chat service is having trouble.", "ANTHROPIC_SERVER", 502, tenantId);
     }
     console.error("[carbon-chat] ANTHROPIC_SERVER", status, e.message);
-    return envelopeError("Chat service returned an error.", "ANTHROPIC_SERVER", 502);
+    return envelopeError("Chat service returned an error.", "ANTHROPIC_SERVER", 502, tenantId);
   }
   console.error("[carbon-chat] ANTHROPIC_SERVER (unclassified)", e);
   return envelopeError(
     "Chat service is unreachable.",
     "ANTHROPIC_SERVER",
     502,
+    tenantId,
   );
 }

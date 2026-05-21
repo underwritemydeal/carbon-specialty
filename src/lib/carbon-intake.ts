@@ -409,30 +409,17 @@ export async function extractIntakePayload(
   return out;
 }
 
-/** Persists the lead. Forward-compat path uses the Worker's
- *  /leads/inbound when NEXT_PUBLIC_LEADS_ENDPOINT_READY === "true";
- *  otherwise (today) it goes straight to /api/lead-fallback which
- *  emails via Resend. Returns { ok, route, reference } on success. */
+/** Persists the lead by POSTing to the in-app /api/lead-fallback route,
+ *  which formats the email and sends via Resend.
+ *
+ *  C.S.1.8 — the NEXT_PUBLIC_LEADS_ENDPOINT_READY / Covr-Worker branch
+ *  was removed. Every submission goes straight to /api/lead-fallback;
+ *  that route degrades gracefully on its own when RESEND_API_KEY is
+ *  unset (logs the payload, returns 200), so there is nothing to gate
+ *  on the client. Returns { ok, route, reference }. */
 export async function submitIntake(
   payload: LeadPayload,
-): Promise<{ ok: boolean; route: "worker" | "fallback-email"; reference: string }> {
-  const ready = process.env.NEXT_PUBLIC_LEADS_ENDPOINT_READY === "true";
-  const endpoint = process.env.NEXT_PUBLIC_LEADS_ENDPOINT;
-
-  if (ready && endpoint) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) return { ok: true, route: "worker", reference: payload.reference_id };
-    } catch {
-      // fall through
-    }
-  }
-
-  // Resend fallback — the local Next route handles auth, formatting, send.
+): Promise<{ ok: boolean; route: "fallback-email"; reference: string }> {
   try {
     const res = await fetch("/api/lead-fallback", {
       method: "POST",

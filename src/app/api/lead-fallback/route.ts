@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { getRawTenantConfig, getDefaultTenantId } from "@/lib/tenants/registry";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 
@@ -42,6 +44,9 @@ interface IntakeBody {
   source: "carbon_specialty_website_chat";
   reference_id: string;
   submitted_at: string;
+  /** Forward-compat — present when the chat is run for a non-default
+   *  tenant. Absent today (single-tenant); resolved to the default. */
+  tenant_id?: string;
   conversation_full?: string;
   // C.S.1.7.1 habitational COPE fields
   asset_class?: AssetClass;
@@ -150,6 +155,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 });
   }
 
+  // Tenant resolution. The chat is single-tenant today; `tenant_id` on
+  // an intake payload is honored when present (forward-compat) and
+  // otherwise resolves to the default. getRawTenantConfig bypasses the
+  // ACTIVE_TENANTS env gate so a misconfigured env never blocks a lead.
+  const tenantId =
+    body.source === "carbon_specialty_website_chat" &&
+    typeof body.tenant_id === "string" &&
+    body.tenant_id.trim()
+      ? body.tenant_id.trim()
+      : getDefaultTenantId();
+  const config =
+    getRawTenantConfig(tenantId) ?? getRawTenantConfig(getDefaultTenantId());
+
   // Always log — useful in Vercel runtime logs when Resend is unconfigured
   // or in test runs. Truncate the transcript so the log line stays usable.
   const logPayload = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
@@ -158,12 +176,15 @@ export async function POST(req: Request) {
   }
   console.log("[carbon-lead]", JSON.stringify(logPayload));
 
-  const to = process.env.FALLBACK_EMAIL_TO;
+  // Destination — env override first, then the tenant config's
+  // notificationEmail. Never hardcoded.
+  const to =
+    process.env.LEAD_NOTIFICATION_EMAIL ?? config?.routing.notificationEmail ?? "";
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!to || !apiKey) {
     console.warn(
-      "[carbon-lead] Resend is not configured (FALLBACK_EMAIL_TO and/or RESEND_API_KEY missing). Logged only.",
+      "[carbon-lead] Resend not fully configured (RESEND_API_KEY and/or a destination missing). Logged only.",
     );
     return NextResponse.json({
       ok: true,
@@ -172,22 +193,46 @@ export async function POST(req: Request) {
     });
   }
 
-  const subject = subjectFor(body);
-  const text = textFor(body);
-  const html = htmlFor(body);
+  // Intake submissions render the tenant's summaryTemplate as a plain-
+  // text body. Contact-form / quote-form submissions keep their
+  // structured plaintext + HTML layout.
+  let subject: string;
+  let text: string;
+  let html: string | undefined;
+  if (body.source === "carbon_specialty_website_chat") {
+    subject = `New intake — ${body.reference_id} — ${tenantId}`;
+    text = config
+      ? fillTemplate(config.output.summaryTemplate, buildIntakeSummary(body))
+      : textFor(body);
+  } else {
+    subject = subjectFor(body);
+    text = textFor(body);
+    html = htmlFor(body);
+  }
 
   try {
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: "Carbon Specialty <noreply@carbonspecialty.com>",
       to,
       subject,
       text,
-      html,
+      ...(html ? { html } : {}),
+    });
+    if (error) {
+      console.error("[carbon-lead] Resend error:", error);
+      return NextResponse.json(
+        { ok: false, error: "send-failed", reference: body.reference_id },
+        { status: 500 },
+      );
+    }
+    await captureServerEvent("lead_submitted", body.reference_id, {
+      tenant_id: tenantId,
+      reference_id: body.reference_id,
     });
     return NextResponse.json({
       ok: true,
-      route: "fallback-email",
+      messageId: data?.id ?? null,
       reference: body.reference_id,
     });
   } catch (err) {
@@ -197,6 +242,102 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+}
+
+/* -----------------------------------------------------------------------------
+ * Intake summary-template rendering (C.S.1.8)
+ *
+ * The tenant config carries a {{camelCase}} summaryTemplate; the intake
+ * email body is that template filled with the submitted CarbonIntake-
+ * Payload. Any unmatched placeholder resolves to "not provided".
+ * ---------------------------------------------------------------------------*/
+
+function fillTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) && values[key] !== ""
+      ? values[key]
+      : "not provided",
+  );
+}
+
+function buildIntakeSummary(body: IntakeBody): Record<string, string> {
+  const yesNo = (v: boolean | undefined): string =>
+    typeof v === "boolean" ? (v ? "Yes" : "No") : "not provided";
+  const usd = (v: number | null | undefined): string =>
+    typeof v === "number" && v > 0 ? `$${v.toLocaleString("en-US")}` : "not provided";
+  const num = (v: number | undefined): string =>
+    typeof v === "number" && v > 0 ? v.toLocaleString("en-US") : "not provided";
+
+  // Loss history — indented block, or a single "None reported" line.
+  let lossHistory: string;
+  if (Array.isArray(body.loss_history_5yr) && body.loss_history_5yr.length > 0) {
+    lossHistory = body.loss_history_5yr
+      .map((e) => {
+        const amount =
+          typeof e.approx_amount_usd === "number" && e.approx_amount_usd > 0
+            ? `~$${e.approx_amount_usd.toLocaleString("en-US")}`
+            : "amount n/d";
+        return `  ${e.year} · ${e.type} · ${amount}`;
+      })
+      .join("\n");
+  } else {
+    lossHistory = "  None reported.";
+  }
+
+  // Agent notes — inquiry trigger, handoff state, portfolio signal.
+  const notes: string[] = [];
+  if (body.inquiry_trigger) notes.push(`Inquiry: ${body.inquiry_trigger}`);
+  if (body.handoff) {
+    notes.push(
+      `HANDOFF — ${HANDOFF_LABELS[body.handoff.reason] ?? body.handoff.reason}${
+        body.handoff.notes ? ` (${body.handoff.notes})` : ""
+      }`,
+    );
+  }
+  if (body.portfolio?.is_portfolio) {
+    const count = body.portfolio.property_count;
+    const tiv = body.portfolio.total_tiv_usd;
+    notes.push(
+      `Portfolio${count ? ` — ${count} properties` : ""}${
+        tiv ? ` — TIV $${tiv.toLocaleString("en-US")}` : ""
+      }`,
+    );
+  }
+
+  return {
+    referenceId: body.reference_id,
+    submittedAt: body.submitted_at,
+    namedInsured: body.named_insured ?? "",
+    assetClass: body.asset_class ? ASSET_LABELS[body.asset_class] ?? body.asset_class : "",
+    unitCount: num(body.unit_count),
+    squareFootage: num(body.square_footage),
+    yearBuilt:
+      typeof body.year_built === "number" && body.year_built > 0
+        ? String(body.year_built)
+        : "not provided",
+    constructionType: body.construction_type ?? "",
+    sprinklered: yesNo(body.sprinklered),
+    centralStationAlarm: yesNo(body.central_station_alarm),
+    electricalType: body.electrical_type
+      ? ELECTRICAL_LABELS[body.electrical_type] ?? body.electrical_type
+      : "",
+    grossAnnualRents: usd(body.gross_annual_rents),
+    effectiveDate: body.effective_date ?? "",
+    currentCarrier: body.current_carrier ?? "",
+    expiringPremium: usd(body.expiring_premium_usd),
+    consent: yesNo(body.consent),
+    enrichmentConfirmed: yesNo(body.enrichment_confirmed),
+    floodConcern: body.flood_concern_volunteered
+      ? "Volunteered by prospect"
+      : "None raised",
+    propertyMgmt: body.property_mgmt_disclosed ?? "Not disclosed",
+    lossHistory,
+    contactName: body.contact?.name ?? "",
+    contactRole: body.contact?.role ?? "",
+    contactEmail: body.contact?.email ?? "",
+    contactPhone: body.contact?.phone ?? "",
+    agentNotes: notes.length > 0 ? notes.join("\n  ") : "—",
+  };
 }
 
 // -----------------------------------------------------------------------------
