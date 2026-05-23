@@ -170,13 +170,14 @@ export function Hero() {
           </Link>
 
           <nav aria-label="Primary" className="hero-nav" style={{ display: "flex", justifyContent: "center", gap: 32 }}>
-            {/* C.S.1.6.5 — `Coverage` removed (route killed). Order
-                matches Header NAV across all primary nav surfaces. */}
+            {/* C.S.1.9 — `Insights` removed from primary nav. The
+                /insights route still exists but isn't advertised here
+                or in Header until there's editorial content to point
+                at. Order matches Header NAV. */}
             {[
               { label: "What we write", href: "/what-we-write" },
               { label: "How it works", href: "/how-it-works" },
               { label: "About", href: "/about" },
-              { label: "Insights", href: "/insights" },
               { label: "Contact", href: "/contact" },
             ].map((l) => (
               <Link key={l.href} href={l.href} className="nav-link nav-link--paper">
@@ -299,7 +300,12 @@ export function Hero() {
           }}
           style={{
             margin: 0,
-            paddingBottom: "5vh",
+            // C.S.1.9 — bottom padding moved to .hero-location-anchor
+            // below so the new mono caps line owns the 5vh bottom
+            // anchor instead of having it stacked on top of the h1's
+            // own padding. "home." now sits 1.5rem above the anchor,
+            // anchor sits 5vh from the hero bottom.
+            paddingBottom: 0,
             fontFamily: "var(--font-display)",
             fontWeight: 400,
             fontSize: "clamp(56px, 8.5vw, 120px)",
@@ -324,6 +330,26 @@ export function Hero() {
             <Accent reduce={reduce} stagger={headlineWords.length}>{HEADLINE_LINE_2}</Accent>
           </span>
         </motion.h1>
+
+        {/* C.S.1.9 — Location anchor below the italic "home." line.
+            Mono caps treatment matching the eyebrow status row. Hidden
+            on mobile (≤480px) so the existing mobile hero rhythm —
+            stripped eyebrow, 64px headline, 8vh padding — stays as
+            shipped in C.S.1.6.6. */}
+        <div
+          className="hero-location-anchor"
+          style={{
+            marginTop: "1.5rem",
+            paddingBottom: "5vh",
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--paper)",
+          }}
+        >
+          California Roots · Licensed Nationwide
+        </div>
       </div>
 
       <style>{`
@@ -426,6 +452,9 @@ export function Hero() {
            margins. Tap target stays 44×44. */
         @media (max-width: 480px) {
           .hero-eyebrow { display: none !important; }
+          /* C.S.1.9 — location anchor is desktop/tablet only; mobile
+             hero rhythm shipped in C.S.1.6.6 stays untouched. */
+          .hero-location-anchor { display: none !important; }
           .hero-fullbleed { height: 90vh !important; min-height: 560px !important; }
           .hero-h1 {
             font-size: 64px !important;

@@ -12,7 +12,6 @@ const COLOPHON = {
   ],
   agency: [
     { label: "About", href: "/about" },
-    { label: "Insights", href: "/insights" },
     { label: "Contact", href: "/contact" },
   ],
   legal: [

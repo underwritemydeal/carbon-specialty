@@ -72,11 +72,28 @@ export function AssetClassesGrid() {
               textWrap: "balance",
             }}
           >
-            Six asset classes.{" "}
+            Built for multifamily.{" "}
             <em style={{ fontStyle: "italic", color: "var(--ember)" }}>
-              One short list of markets per class.
+              Ready for the rest.
             </em>
           </h2>
+          {/* C.S.1.9 — subline anchoring the heading: apartments are
+              the depth, the other five classes are written because the
+              same clients own them. Sits 0.5rem below the heading. */}
+          <p
+            style={{
+              margin: "0.5rem 0 0",
+              fontFamily: "var(--font-display)",
+              fontSize: 18,
+              lineHeight: 1.45,
+              color: "var(--ink)",
+              opacity: 0.75,
+              maxWidth: "48ch",
+              textWrap: "pretty",
+            }}
+          >
+            Apartments are what we know. Everything else we write because our clients own it.
+          </p>
         </FadeUp>
 
         <div className="rule" style={{ marginBlock: 80 }} />

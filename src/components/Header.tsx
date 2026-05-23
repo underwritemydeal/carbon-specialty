@@ -2,16 +2,14 @@ import Link from "next/link";
 import { Wordmark } from "./Wordmark";
 import { Icon } from "./Icon";
 
-// C.S.1.6.5 — `Coverage` removed (the /coverage route was killed in
-// this sprint along with the home Coverage section; the editorial
-// reference page didn't carry its weight). Order reads: What we write
-// → How it works → About → Insights → Contact across desktop nav,
-// hero masthead nav, and footer services.
+// C.S.1.9 — `Insights` removed from primary nav. The /insights route
+// still exists but isn't advertised in nav until there's editorial
+// content to point at. Four items: What we write → How it works →
+// About → Contact across desktop nav and hero masthead nav.
 const NAV = [
   { label: "What we write", href: "/what-we-write" },
   { label: "How it works", href: "/how-it-works" },
   { label: "About", href: "/about" },
-  { label: "Insights", href: "/insights" },
   { label: "Contact", href: "/contact" },
 ];
 

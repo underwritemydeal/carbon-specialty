@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, useReducedMotion, AnimatePresence } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useChat } from "./ChatProvider";
 import {
   getSpeechRecognitionCtor,
@@ -28,13 +28,17 @@ import {
 } from "@/lib/voice-client";
 import { track } from "@/lib/analytics";
 
-const PLACEHOLDERS = [
-  "24 units in Long Beach, 1962…",
-  "Mixed-use, ground-floor retail, Pasadena…",
-  "Builders risk, ADU project, San Diego…",
-  "10-unit walk-up, recent fire. Help.",
-  "Five-building portfolio, scattered-site SFR…",
-];
+// C.S.1.9 — Single static placeholder replaces the rotating array.
+// One clear prompt reads more deliberate than five novelty addresses
+// cycling every 3.5s.
+const TEXTAREA_PLACEHOLDER =
+  "Tell us about your property — location, type, how many units...";
+
+// C.S.1.9 — Update these constants when the destinations are ready.
+// STANDARD_FORM_URL points at the "Prefer a form?" CTA in the intake
+// widget; SCHEDULE_URL points at the Cal.com booking page beneath it.
+const STANDARD_FORM_URL = "/contact";
+const SCHEDULE_URL = "https://cal.com/carbonspecialty";
 
 const EASE = [0.2, 0.7, 0.2, 1] as const;
 
@@ -42,7 +46,9 @@ export function HeroLede() {
   const router = useRouter();
   const { open: onOpenChat } = useChat();
   const [input, setInput] = useState("");
-  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  // C.S.1.9 — `focused` retained for the focus-color border swap on
+  // the chat box; the rotating-placeholder state it used to gate was
+  // removed alongside the PLACEHOLDERS array.
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
@@ -58,12 +64,6 @@ export function HeroLede() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const voiceCommittedRef = useRef<string>("");
   const inputForVoiceRef = useRef<string>("");
-
-  useEffect(() => {
-    if (focused || input) return;
-    const id = setInterval(() => setPlaceholderIdx((i) => (i + 1) % PLACEHOLDERS.length), 3500);
-    return () => clearInterval(id);
-  }, [focused, input]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -230,110 +230,68 @@ export function HeroLede() {
             </em>
           </motion.p>
 
-          {/* Chat box — cols 1-10 */}
+          {/* C.S.1.9 — Carrier credibility line. Sits between the lede
+              paragraph and the intake widget at the full content
+              column width. Mono caps in ink. Spec margins: 1.5rem
+              from the paragraph above, 1.5rem before the widget. The
+              col-12 wrapper around carrier + widget + schedule + meta
+              owns those margins explicitly; the grid's rowGap only
+              applies between the lede <p> (row 1) and this wrapper
+              (row 2). */}
+          <div
+            className="col-12 start-1"
+            style={{ display: "flex", flexDirection: "column" }}
+          >
+            <span
+              className="hero-lede-carriers"
+              style={{
+                marginTop: 0,
+                marginBottom: "1.5rem",
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--ink)",
+                textWrap: "balance",
+              }}
+            >
+              Placed with Travelers, Hartford, Liberty Mutual, Nationwide, Chubb, and 60+ programs through our carrier network.
+            </span>
+
+          {/* C.S.1.9 — Intake widget. Full-width two-column grid:
+                · Left  — AI conversation path (label + chat-box)
+                · Right — Standard form path ("Prefer a form?" + CTA)
+              Single 1px ink divider absolutely centered between the
+              columns at 60% height. On tablet (≤768px) and mobile
+              (≤480px) the columns stack vertically and the divider
+              becomes a horizontal 1px rule. */}
           <motion.div
-            className="col-10 start-1"
+            className="intake-widget"
             initial={{ opacity: 0, y: reduce ? 0 : 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.55, ease: EASE, delay: 0.1 }}
-            style={{ display: "flex", flexDirection: "column", gap: 14 }}
+            style={{ position: "relative" }}
           >
-            {/* C.S.1.6.6 — Intake-tool framing. Two-line introduction
-                that names the chat box for what it is (Carbon's intake
-                tool) and explains what it does. Renders on all
-                breakpoints. Spec:
-                  · Heading: 11px Plex Mono, ink, letter-spacing 0.14em
-                  · Subhead: 16px Plex Serif, ink, max-width 32ch */}
-            <div className="hero-lede-intake-tool" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                  color: "var(--ink)",
-                }}
-              >
-                Carbon &middot; Intake Tool
-              </span>
-              <p
-                style={{
-                  margin: 0,
-                  fontFamily: "var(--font-display)",
-                  fontSize: 16,
-                  lineHeight: 1.45,
-                  color: "var(--ink)",
-                  maxWidth: "32ch",
-                  textWrap: "pretty",
-                }}
-              >
-                Speak to it or type. Carbon walks you through the intake, captures the
-                facts a specialist needs, and routes you to the right desk.
-              </p>
-            </div>
-
-            {/* Agent identity row above the textarea. Hidden on mobile
-                (≤480px) per sprint C.S.1.6.4 — the status pulse only
-                renders inside the CarbonChat panel header now, not as
-                page-level chrome. */}
-            <div
-              className="hero-lede-identity"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                letterSpacing: "0.22em",
-                textTransform: "uppercase",
-                color: "var(--ink-2)",
-              }}
-            >
-              <PulseDot />
-              <span>Carbon · responding in seconds</span>
-            </div>
-
-            <div
-              className="chat-box"
-              style={{
-                border: focused ? "1px solid var(--ember)" : "1px solid var(--ink)",
-                transition: "border-color var(--dur-fast) var(--ease)",
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "stretch",
-                background: "var(--paper-2)",
-              }}
-            >
+            <div className="intake-grid">
+              {/* LEFT — AI conversation path */}
+              <div className="intake-col intake-col--left">
+                <span className="intake-label">Start a conversation with Carbon</span>
+                <div
+                  className="chat-box"
+                  style={{
+                    border: focused ? "1px solid var(--ember)" : "1px solid var(--ink)",
+                    transition: "border-color var(--dur-fast) var(--ease)",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    alignItems: "stretch",
+                    background: "var(--paper-2)",
+                  }}
+                >
               <div className="chat-text-wrap" style={{ position: "relative", padding: "20px 22px 18px" }}>
                 <label htmlFor="hero-lede-input" className="sr-only">
                   Tell Carbon about your building
                 </label>
-                {!input && (
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={placeholderIdx}
-                      aria-hidden
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.35, ease: EASE }}
-                      style={{
-                        position: "absolute",
-                        top: 20,
-                        left: 22,
-                        right: 22,
-                        pointerEvents: "none",
-                        fontFamily: "var(--font-body)",
-                        fontSize: 17,
-                        lineHeight: 1.5,
-                        color: "var(--ink-3)",
-                      }}
-                    >
-                      {PLACEHOLDERS[placeholderIdx]}
-                    </motion.span>
-                  </AnimatePresence>
-                )}
                 <textarea
                   id="hero-lede-input"
                   ref={inputRef}
@@ -346,6 +304,10 @@ export function HeroLede() {
                     track("cs_hero_input_focus");
                   }}
                   onBlur={() => setFocused(false)}
+                  // C.S.1.9 — single static placeholder. Rotating
+                  // overlay (AnimatePresence + PLACEHOLDERS array)
+                  // removed.
+                  placeholder={TEXTAREA_PLACEHOLDER}
                   className="hero-lede-textarea"
                   style={{
                     width: "100%",
@@ -468,63 +430,93 @@ export function HeroLede() {
                   <polyline points="14 6 20 12 14 18" />
                 </svg>
               </button>
+                </div>
+
+                {/* C.S.1.6.5 — Voice-enabled caption (mobile-only). Renders
+                    below the chat box at ≤480px when SpeechRecognition is
+                    supported. Mono register, opacity 0.6. */}
+                {voiceSupported && (
+                  <span
+                    className="hero-lede-voice-caption"
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      letterSpacing: "0.22em",
+                      textTransform: "uppercase",
+                      color: "var(--ink-3)",
+                      opacity: 0.6,
+                      display: "none",
+                    }}
+                  >
+                    Voice-enabled · type or speak · Carbon speaks back
+                  </span>
+                )}
+              </div>
+              {/* end intake-col--left */}
+
+              {/* RIGHT — Standard form path */}
+              <div className="intake-col intake-col--right">
+                <div className="intake-form-container">
+                  <h3 className="intake-form-heading">Prefer a form?</h3>
+                  <Link
+                    href={STANDARD_FORM_URL}
+                    className="intake-form-cta"
+                  >
+                    Use our intake form →
+                  </Link>
+                </div>
+              </div>
+
+              {/* Divider — single 1px ink line, absolutely positioned at
+                  the center of the grid at 60% height on desktop. On
+                  ≤768px the divider class becomes a horizontal 1px rule
+                  in the column flow (see CSS). */}
+              <div className="intake-divider" aria-hidden />
             </div>
+          </motion.div>
 
-            {/* C.S.1.6.5 — Voice-enabled caption (mobile-only). Renders
-                below the chat box at ≤480px when SpeechRecognition is
-                supported. Mono register, opacity 0.6. The hero chat
-                affordance + this caption together communicate that the
-                user can type or speak, and that Carbon speaks back. */}
-            {voiceSupported && (
-              <span
-                className="hero-lede-voice-caption"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.22em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-3)",
-                  opacity: 0.6,
-                  display: "none",
-                }}
-              >
-                Voice-enabled · type or speak · Carbon speaks back
-              </span>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Link
-                href="/quote"
-                className="chat-secondary"
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 11,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-2)",
-                  textDecoration: "none",
-                  borderBottom: "1px solid transparent",
-                  paddingBottom: 2,
-                  transition: "border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-                }}
-              >
-                Or use the standard quote form →
-              </Link>
-            </div>
-
-            <span
+          {/* C.S.1.9 — Schedule call link, directly below the widget.
+              Linked text is pine, underlines on hover. */}
+          <div
+            className="hero-lede-schedule-line"
+            style={{
+              marginTop: "1.25rem",
+              fontFamily: "var(--font-body)",
+              fontSize: 14,
+              color: "var(--ink)",
+            }}
+          >
+            Prefer to talk through it?{" "}
+            <a
+              href={SCHEDULE_URL}
+              className="hero-lede-schedule-link"
               style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9,
-                letterSpacing: "0.28em",
-                textTransform: "uppercase",
-                color: "var(--ink-3)",
-                textAlign: "right",
+                color: "var(--ember)",
+                textDecoration: "none",
+                borderBottom: "1px solid transparent",
+                paddingBottom: 1,
+                transition: "border-color var(--dur-fast) var(--ease)",
               }}
             >
-              Reviewed by a specialist. Most submissions answered same business day.
-            </span>
-          </motion.div>
+              Schedule a call →
+            </a>
+          </div>
+
+          <span
+            style={{
+              marginTop: 24,
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.28em",
+              textTransform: "uppercase",
+              color: "var(--ink-3)",
+              textAlign: "right",
+            }}
+          >
+            Reviewed by a specialist. Most submissions answered same business day.
+          </span>
+        </div>
+        {/* end col-12 wrapper */}
         </div>
       </div>
 
@@ -532,7 +524,108 @@ export function HeroLede() {
         .hero-lede-section { padding: 96px 0 128px; }
         @media (max-width: 1024px) { .hero-lede-section { padding: 64px 0 96px; } }
         @media (max-width: 600px)  { .hero-lede-section { padding: 48px 0 64px; } }
-        .chat-secondary:hover { border-bottom-color: var(--ember) !important; color: var(--ink) !important; }
+
+        /* C.S.1.9 — Intake widget. Two equal columns separated by a
+           1px ink divider at 60% height, absolutely centered. Left
+           column is the AI conversation path (label + chat-box).
+           Right column is the standard-form path (bordered container
+           with heading + CTA). On ≤768px the columns stack and the
+           divider becomes a horizontal 1px rule. */
+        .intake-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          column-gap: 48px;
+          row-gap: 32px;
+          align-items: stretch;
+          position: relative;
+        }
+        .intake-col { display: flex; flex-direction: column; gap: 14px; }
+        .intake-col--right { gap: 0; }
+        .intake-label {
+          font-family: var(--font-body);
+          font-size: 13px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--ink);
+        }
+        .intake-divider {
+          position: absolute;
+          left: 50%;
+          top: 20%;
+          bottom: 20%;
+          width: 1px;
+          background: var(--ink);
+          transform: translateX(-50%);
+        }
+        .intake-form-container {
+          flex: 1;
+          border: 1px solid var(--ink);
+          background: var(--paper);
+          border-radius: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 20px;
+          padding: 32px 28px;
+          min-height: 100%;
+          text-align: center;
+        }
+        .intake-form-heading {
+          margin: 0;
+          font-family: var(--font-display);
+          font-weight: 400;
+          font-size: 18px;
+          line-height: 1.3;
+          color: var(--ink);
+        }
+        .intake-form-cta {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 20px;
+          border: 1px solid var(--ember);
+          background: var(--ember);
+          color: var(--paper);
+          font-family: var(--font-body);
+          font-size: 14px;
+          font-weight: 500;
+          line-height: 1;
+          text-decoration: none;
+          border-radius: 0;
+          transition: background var(--dur-fast) var(--ease),
+                      color var(--dur-fast) var(--ease);
+        }
+        .intake-form-cta:hover {
+          background: var(--ember-ink);
+          border-color: var(--ember-ink);
+          color: var(--paper);
+        }
+
+        /* C.S.1.9 — Schedule call link: pine text, no underline at
+           rest, underline on hover. */
+        .hero-lede-schedule-link:hover { border-bottom-color: var(--ember) !important; }
+
+        /* Tablet + mobile: stack the columns, divider becomes a
+           horizontal 1px rule. ≤768px is the spec breakpoint. */
+        @media (max-width: 768px) {
+          .intake-grid {
+            grid-template-columns: 1fr;
+            column-gap: 0;
+          }
+          .intake-divider {
+            position: static;
+            width: 100%;
+            height: 1px;
+            transform: none;
+            top: auto;
+            bottom: auto;
+            left: auto;
+            order: 2;
+          }
+          .intake-col--left { order: 1; }
+          .intake-col--right { order: 3; }
+        }
 
         /* C.S.1.6.2 — Mobile rhythm + accent polish at ≤480px.
            Hero-to-lede top padding tightens by ~25% (48 → 36) so the
@@ -550,16 +643,13 @@ export function HeroLede() {
              · sentence 1 — 24px Plex Serif, plain
              · sentence 2 — 32px Plex Serif italic pine, double vertical
                breathing room above and below (this is the pull-quote)
-             · sentence 3 — 20px Plex Serif
            The .hero-lede paragraph forces flex-column with zero gap so
            per-line margins control rhythm. font-family is overridden
-           to var(--font-display) (IBM Plex Serif) so all three lines
+           to var(--font-display) (IBM Plex Serif) so both lines
            land in the same serif register.
 
            The chat box stacks vertically: textarea on top, "Ask Carbon
-           →" full-width below (pine fill, paper text, 56px tall). The
-           page-level pulse identity row is hidden — the pulse now only
-           exists in the CarbonChat panel header. */
+           →" full-width below (pine fill, paper text, 64px tall). */
         @media (max-width: 480px) {
           /* Reshape the lede paragraph. */
           #hero-lede {
@@ -582,12 +672,6 @@ export function HeroLede() {
             font-style: italic !important;
             color: var(--ember) !important;
           }
-          /* C.S.1.6.6 — .hero-lede-s3 rule deleted along with the
-              third lede sentence. Body lede ends after the pine
-              italic pull-quote now. */
-
-          /* Hide the page-level pulse identity row. */
-          .hero-lede-identity { display: none !important; }
 
           /* Chat box stacks. */
           .chat-box {
@@ -633,26 +717,3 @@ export function HeroLede() {
   );
 }
 
-function PulseDot() {
-  return (
-    <span aria-hidden className="pulse-dot">
-      <style>{`
-        .pulse-dot {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          background: var(--ember);
-          animation: pulse-dot-anim 2s ease-in-out infinite;
-        }
-        @keyframes pulse-dot-anim {
-          0%   { opacity: 1; }
-          50%  { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .pulse-dot { animation: none; opacity: 1; }
-        }
-      `}</style>
-    </span>
-  );
-}
