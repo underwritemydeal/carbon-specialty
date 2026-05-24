@@ -32,8 +32,8 @@ const BODY_COPY =
   "Tell us what you own. Carbon turns the conversation into a clean property submission and connects you with real coverage options from a specialist.";
 
 const METRICS: Array<{ value: string; label: string }> = [
-  { value: "$2B+", label: "Property value insured" },
-  { value: "500+", label: "Properties covered" },
+  { value: "$5B+", label: "Property value insured" },
+  { value: "1,000+", label: "Properties covered" },
   { value: "<10 min", label: "Avg response time" },
 ];
 
