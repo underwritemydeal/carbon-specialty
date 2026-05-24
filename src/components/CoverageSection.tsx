@@ -161,6 +161,10 @@ export function CoverageSection() {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          /* C.S.2.0.4 — image is portrait (~2:3); biasing the focal
+             point slightly right keeps the main building + stilt
+             pillars in frame when the container crops horizontally. */
+          object-position: 60% center;
         }
         .cs-cov__photo-tint {
           position: absolute;
@@ -236,12 +240,24 @@ export function CoverageSection() {
             grid-template-columns: 1fr 1fr;
             gap: 40px;
           }
-          .cs-cov__photo { grid-column: 1 / -1; min-height: 280px; }
+          /* C.S.2.0.4 — at tablet+ the photo spans full width.
+             Aspect-ratio replaces the previous fixed min-height so
+             the portrait beach-house image renders without a
+             harsh horizontal letterbox crop. 4:3 keeps the photo
+             from dominating the section. */
+          .cs-cov__photo {
+            grid-column: 1 / -1;
+            aspect-ratio: 4 / 3;
+            min-height: 0;
+          }
         }
         @media (max-width: 600px) {
           .cs-cov { padding: 56px 0; }
           .cs-cov__inner { grid-template-columns: 1fr; gap: 32px; }
-          .cs-cov__photo { min-height: 220px; }
+          /* On phones the viewport is already tall — let the photo
+             use a 3:4 portrait container so the receding pillars +
+             upper deck stay visible without significant cropping. */
+          .cs-cov__photo { aspect-ratio: 3 / 4; }
           .cs-cov__headline { font-size: 32px; }
         }
       `}</style>

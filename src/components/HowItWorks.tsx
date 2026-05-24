@@ -49,7 +49,7 @@ export function HowItWorks() {
           <span className="cs-how__eyebrow">A better way to get insured</span>
           <div className="cs-how__intro-grid">
             <h2 id="how-it-works-headline" className="cs-how__headline">
-              Built for how real estate investors work.
+              Built around how you actually work.
             </h2>
             <p className="cs-how__body">
               We combine deep real estate expertise with a modern intake
