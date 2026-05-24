@@ -1988,6 +1988,24 @@ function ConsoleStyles() {
           border-top: 1px solid rgba(244,241,234,0.08);
         }
       }
+
+      /* C.S.2.0.8 — phone-specific sizing. The inline console now
+         renders at all breakpoints (previously hidden ≤768px in the
+         hero, which left mobile users without the chat surface
+         until they tapped a CTA). Default 600px height is too tall
+         for a phone — drop to 520px and tighten internal padding so
+         the console fits in roughly two-thirds of the viewport
+         without dominating the page. */
+      @media (max-width: 480px) {
+        .cs-console {
+          height: 520px;
+          border-radius: 12px;
+        }
+        .cs-console__head { padding: 14px 16px; }
+        .cs-console__messages { padding: 16px; }
+        .cs-console__input-area { padding: 12px 16px; }
+        .cs-console__panel { padding: 12px 16px; }
+      }
     `}</style>
   );
 }

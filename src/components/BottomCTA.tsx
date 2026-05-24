@@ -12,7 +12,6 @@
  * it opens the slide-out CarbonChat via ChatProvider.
  */
 
-import { useEffect, useState } from "react";
 import { useChat } from "./ChatProvider";
 
 // Mirrored from HeroLede (C.S.1.9). Update both constants together
@@ -21,25 +20,17 @@ const SCHEDULE_URL = "https://cal.com/carbonspecialty";
 
 export function BottomCTA() {
   const { open: onOpenChat } = useChat();
-  const [isDesktop, setIsDesktop] = useState(false);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 769px)");
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
+  // C.S.2.0.8 — the inline console renders at all breakpoints now,
+  // so the primary CTA always focuses + scrolls to the inline
+  // textarea. The slide-out CarbonChat in ChatProvider remains as
+  // a fallback if the textarea isn't in the DOM (e.g. on pages
+  // that don't render the Hero — Insights, Contact, etc.).
   const onStartQuote = () => {
-    if (isDesktop) {
-      const el = document.getElementById("cs-console-input") as HTMLTextAreaElement | null;
-      if (el) {
-        el.focus();
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else {
-        onOpenChat();
-      }
+    const el = document.getElementById("cs-console-input") as HTMLTextAreaElement | null;
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       onOpenChat();
     }

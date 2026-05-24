@@ -21,7 +21,7 @@
  * prior sprints).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import Link from "next/link";
 import { CarbonChat } from "./CarbonChat";
 import { useChat } from "./ChatProvider";
@@ -41,28 +41,19 @@ const CARRIERS = "Chubb · Travelers · Liberty Mutual · Nationwide · and more
 
 export function Hero() {
   const { open: onOpenChat } = useChat();
-  const [isDesktop, setIsDesktop] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
 
-  // Track the >768px breakpoint so the primary CTA can route to the
-  // right surface: at desktop the inline console textarea is already
-  // visible, so we just focus it. At mobile the inline console isn't
-  // rendered, so we open the slide-out CarbonChat via ChatProvider.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 769px)");
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
+  // C.S.2.0.8 — the inline console renders at all breakpoints now,
+  // so the primary CTA always focuses (and scrolls to) the inline
+  // textarea regardless of viewport. The slide-out CarbonChat in
+  // ChatProvider is still mounted as a safety net — if the inline
+  // textarea isn't in the DOM for any reason (race during hydration,
+  // future code path) we fall through to opening the slide-out.
   const onStartQuote = () => {
-    if (isDesktop) {
-      const el = document.getElementById("cs-console-input") as HTMLTextAreaElement | null;
-      if (el) {
-        el.focus();
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+    const el = document.getElementById("cs-console-input") as HTMLTextAreaElement | null;
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       onOpenChat();
     }
@@ -366,9 +357,13 @@ export function Hero() {
 
         .cs-hero__console { min-width: 0; }
 
-        /* Tablet / mobile collapse — single column, drop the console
-           (the slide-out CarbonChat in ChatProvider handles input
-           at ≤768px). Mobile video swap fires at the same breakpoint. */
+        /* Tablet / mobile collapse — single column. C.S.2.0.8: the
+           inline console is now visible at all breakpoints (was
+           hidden ≤768px previously, leaving mobile users without
+           the chat surface until they tapped a CTA). The console
+           stacks below the hero copy here; the slide-out remains
+           mounted in ChatProvider as a fallback. Mobile video swap
+           fires at the same 768px breakpoint. */
         @media (max-width: 768px) {
           .cs-hero { padding: 56px 0 56px; min-height: 0; }
           .cs-hero__grid {
@@ -376,7 +371,6 @@ export function Hero() {
             row-gap: 40px;
             min-height: 0;
           }
-          .cs-hero__console { display: none; }
           .cs-hero__headline { font-size: 44px; }
           .cs-hero__video--desktop { display: none !important; }
           .cs-hero__video--mobile { display: block; }
