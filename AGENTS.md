@@ -6,21 +6,31 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Deploy safety
 
-Production deploys require explicit operator confirmation immediately before
-execution, separate from any prior conversation about deployment. Pattern:
+When the operator says "push to prod", "deploy to production", or
+equivalent, treat that as authorization. Run `vercel deploy --prod`
+directly. No two-step confirmation dance — the operator is the only one
+with deploy authority and knows the site state.
 
-1. Operator asks for deploy: "deploy to vercel"
-2. Agent responds: "This will deploy to production at
-   https://carbon-specialty.vercel.app/. Site is currently configured to
-   [indexable | noindex]. Confirm proceed to production, or specify
-   --preview for a preview deploy."
-3. Wait for explicit "yes proceed to production" or equivalent.
-4. Only then run `vercel deploy --prod`.
+Report after the deploy completes:
+- Deployment URL + status
+- Open pre-launch flags the operator may want to remember are still in
+  the build (placeholder URLs like `SCHEDULE_URL`, filename mismatches,
+  in-flight TODOs)
 
-This applies to first deploy, post-DNS-cutover deploys, and any deploy after
-significant marketing copy or stats changes. Preview deploys
-(`vercel` without `--prod`, or `vercel --preview`) do not require this
-confirmation step.
+Re-prompt for explicit confirmation BEFORE deploying only when one of
+the following is true:
+
+- Indexability state would change in this deploy (e.g. flipping
+  `noindex` → `indexable` via `src/app/layout.tsx` `metadata.robots` or
+  `src/app/robots.ts`). This is a one-way SEO event — confirm.
+- The first production deploy of the site (or first deploy after DNS
+  cutover to a new domain).
+- The working tree has uncommitted changes that would be left out —
+  warn what's being excluded and ask whether to commit first.
+- The diff would push to `main`/`master` with `--force` or otherwise
+  rewrite published history.
+
+Preview deploys (`vercel` without `--prod`) never require confirmation.
 
 ## Chat architecture (post-C.S.1.6)
 
