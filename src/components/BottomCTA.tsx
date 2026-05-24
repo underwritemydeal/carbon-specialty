@@ -91,7 +91,7 @@ export function BottomCTA() {
           font-size: 11px;
           letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: #4A8F68;
+          color: var(--ember);
         }
         .cs-bcta__headline {
           margin: 0;

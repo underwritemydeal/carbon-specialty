@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Wordmark } from "./Wordmark";
 
 const NAV = [
   { label: "Coverage", href: "/what-we-write" },
@@ -61,8 +62,11 @@ export function Header({ activePath }: { activePath?: string }) {
         }}
       >
         <Link href="/" className="cs-header__logo" aria-label="Carbon Specialty — home" style={{ textDecoration: "none", color: "inherit" }}>
-          <span className="cs-header__logo-name">CARBON</span>
-          <span className="cs-header__logo-sub">SPECIALTY INSURANCE</span>
+          {/* C.S.2.0.1 — restored canonical Wordmark (pine CA + RB
+              underline + SPECIALTY · INSURANCE micro-caps below). The
+              over-video variant carries the dark-surface treatment:
+              pine CA with a soft text-shadow, paper RBON, paper rule. */}
+          <Wordmark size="sm" overVideo align="left" />
         </Link>
 
         <nav aria-label="Primary" className="cs-header__nav">
@@ -89,22 +93,7 @@ export function Header({ activePath }: { activePath?: string }) {
       <style>{`
         .cs-header__logo {
           display: inline-flex;
-          flex-direction: column;
           line-height: 1;
-        }
-        .cs-header__logo-name {
-          font-family: var(--font-wordmark);
-          font-size: 24px;
-          letter-spacing: 0.18em;
-          color: var(--paper);
-        }
-        .cs-header__logo-sub {
-          margin-top: 6px;
-          font-family: var(--font-mono);
-          font-size: 9px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: rgba(244, 241, 234, 0.6);
         }
         .cs-header__nav {
           display: flex;
@@ -151,8 +140,6 @@ export function Header({ activePath }: { activePath?: string }) {
         @media (max-width: 480px) {
           .cs-header { height: 72px; }
           .cs-header__cta { padding: 10px 16px; font-size: 12px; }
-          .cs-header__logo-name { font-size: 20px; }
-          .cs-header__logo-sub { font-size: 8px; }
         }
       `}</style>
     </header>

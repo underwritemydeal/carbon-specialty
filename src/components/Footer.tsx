@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import { Wordmark } from "./Wordmark";
 
 const NAV = [
   { label: "Coverage", href: "/what-we-write" },
@@ -25,8 +26,11 @@ export function Footer() {
       <div className="container cs-footer__inner">
         <div className="cs-footer__left">
           <Link href="/" className="cs-footer__logo" aria-label="Carbon Specialty — home">
-            <span className="cs-footer__logo-name">CARBON</span>
-            <span className="cs-footer__logo-sub">SPECIALTY INSURANCE</span>
+            {/* C.S.2.0.1 — canonical Wordmark restored. Inverted
+                variant: paper CARBON, paper rule, paper sub. The
+                pine CA color is suppressed in inverted mode so the
+                whole lockup reads as a single light unit on dark. */}
+            <Wordmark size="sm" inverted align="left" />
           </Link>
           <span className="cs-footer__credit">
             © {year} Carbon Specialty. Licensed insurance brokerage.
@@ -63,24 +67,9 @@ export function Footer() {
         }
         .cs-footer__logo {
           display: inline-flex;
-          flex-direction: column;
           line-height: 1;
           text-decoration: none;
           color: inherit;
-        }
-        .cs-footer__logo-name {
-          font-family: var(--font-wordmark);
-          font-size: 18px;
-          letter-spacing: 0.18em;
-          color: var(--paper);
-        }
-        .cs-footer__logo-sub {
-          margin-top: 5px;
-          font-family: var(--font-mono);
-          font-size: 8px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: rgba(244,241,234,0.50);
         }
         .cs-footer__credit {
           font-family: var(--font-body);

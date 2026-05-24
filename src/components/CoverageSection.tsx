@@ -94,7 +94,7 @@ export function CoverageSection() {
           font-size: 11px;
           letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: #4A8F68;
+          color: var(--ember);
         }
         .cs-cov__headline {
           margin: 18px 0 0;

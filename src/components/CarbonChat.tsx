@@ -723,7 +723,7 @@ export function CarbonChat({
                       fontSize: 10,
                       letterSpacing: "0.18em",
                       textTransform: "uppercase",
-                      color: "#4A8F68",
+                      color: "var(--ember)",
                     }}
                   >
                     Carbon
@@ -1647,7 +1647,7 @@ function PinePulseDot() {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: #4A8F68;
+          background: var(--ember);
           animation: cs-console-pulse 2s ease-in-out infinite;
         }
         @keyframes cs-console-pulse {
@@ -1766,7 +1766,7 @@ function ConsoleStyles() {
         font-size: 10px;
         letter-spacing: 0.10em;
         text-transform: uppercase;
-        color: #4A8F68;
+        color: var(--ember);
         line-height: 1;
       }
       .cs-console__head-right {

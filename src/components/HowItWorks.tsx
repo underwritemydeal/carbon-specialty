@@ -88,7 +88,7 @@ export function HowItWorks() {
           font-size: 11px;
           letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: #4A8F68;
+          color: var(--ember);
         }
         .cs-how__intro-grid {
           display: grid;

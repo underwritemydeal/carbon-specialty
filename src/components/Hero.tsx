@@ -232,7 +232,7 @@ export function Hero() {
           font-size: 11px;
           letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: #4A8F68;
+          color: var(--ember);
         }
         .cs-hero__headline {
           margin: 18px 0 0;
@@ -246,7 +246,7 @@ export function Hero() {
         }
         .cs-hero__headline-accent {
           font-style: italic;
-          color: #4A8F68;
+          color: var(--ember);
           font-family: var(--font-display);
         }
         .cs-hero__body {
