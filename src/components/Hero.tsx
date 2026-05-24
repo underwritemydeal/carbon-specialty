@@ -26,8 +26,8 @@ import Link from "next/link";
 import { CarbonChat } from "./CarbonChat";
 import { useChat } from "./ChatProvider";
 
-const HEADLINE_PRIMARY = "Insurance for real estate investors,";
-const HEADLINE_ACCENT = "without the paperwork.";
+const HEADLINE_PRIMARY = "Insuring the buildings that make our cities";
+const HEADLINE_ACCENT = "home.";
 const BODY_COPY =
   "Tell us what you own. Carbon turns the conversation into a clean property submission and connects you with real coverage options from a specialist.";
 
@@ -245,9 +245,14 @@ export function Hero() {
           text-wrap: balance;
         }
         .cs-hero__headline-accent {
+          font-family: var(--font-wordmark);
           font-style: italic;
+          font-weight: 400;
           color: var(--ember);
-          font-family: var(--font-display);
+          padding-right: 0.06em;
+          /* Soft ink halo carried over from C.S.1.5.1 so Bodoni italic
+             pine reads cleanly on the video-tinted ink ground. */
+          text-shadow: 0 2px 32px rgba(11, 11, 12, 0.5);
         }
         .cs-hero__body {
           margin: 24px 0 0;
