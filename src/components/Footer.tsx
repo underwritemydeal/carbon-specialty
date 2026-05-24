@@ -1,192 +1,112 @@
-import Link from "next/link";
-import { Wordmark } from "./Wordmark";
-import { PhotoSlot } from "./PhotoSlot";
+/**
+ * Footer — sprint C.S.2.0.
+ *
+ * Single-row dark footer. Left holds the Bodoni wordmark lockup +
+ * copyright + license note. Right holds the same four nav items as
+ * the header so users have a tail-end exit at the bottom of the
+ * page. Replaces the earlier multi-column colophon — that pattern
+ * pre-dated the C.S.2.0 redesign and read as marketing chrome the
+ * editorial dark surface didn't need.
+ */
 
-const COLOPHON = {
-  brand:
-    "Real estate insurance for investment property owners. Nationwide — direct admitted appointments where available, wholesale and program partners where they're not.",
-  services: [
-    { label: "What we write", href: "/what-we-write" },
-    { label: "How it works", href: "/how-it-works" },
-    { label: "Get a quote", href: "/quote" },
-  ],
-  agency: [
-    { label: "About", href: "/about" },
-    { label: "Contact", href: "/contact" },
-  ],
-  legal: [
-    { label: "Privacy", href: "/privacy" },
-    { label: "Terms", href: "/terms" },
-  ],
-};
+import Link from "next/link";
+
+const NAV = [
+  { label: "Coverage", href: "/what-we-write" },
+  { label: "How it works", href: "/how-it-works" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
+];
 
 export function Footer() {
+  const year = new Date().getFullYear();
   return (
-    <footer
-      style={{
-        background: "var(--ink)",
-        color: "var(--paper)",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Top photographic band — Slot 5 placeholder */}
-      <div
-        aria-hidden
-        style={{
-          position: "relative",
-          height: "40vh",
-          minHeight: 280,
-          borderBottom: "1px solid var(--paper-3)",
-          overflow: "hidden",
-        }}
-      >
-        <PhotoSlot
-          alt="Wide-angle urban skyline at dusk, mid-rise apartment buildings silhouetted against the sky."
-          caption="Dusk · Skyline · 05"
-          inverted
-          fill
-        />
-      </div>
-
-      {/* Colophon */}
-      <div
-        className="container"
-        style={{
-          paddingBlock: "96px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 64,
-        }}
-      >
-        {/* Wordmark + brand statement */}
-        <div
-          className="grid-12 footer-top"
-          style={{ alignItems: "flex-start", rowGap: 32 }}
-        >
-          <div className="col-5">
-            <Wordmark size="md" inverted />
-          </div>
-          <p
-            className="col-6 start-7"
-            style={{
-              margin: 0,
-              fontFamily: "var(--font-display)",
-              fontStyle: "italic",
-              fontSize: "clamp(20px, 2.2vw, 28px)",
-              lineHeight: 1.3,
-              color: "var(--paper-2)",
-              textWrap: "balance",
-            }}
-          >
-            {COLOPHON.brand}
-          </p>
-        </div>
-
-        <div className="rule" style={{ background: "var(--paper-3)" }} />
-
-        {/* Three columns + licensed footer */}
-        <div className="grid-12 footer-cols" style={{ rowGap: 32, alignItems: "flex-start" }}>
-          <FooterCol head="Services" items={COLOPHON.services} className="col-4" />
-          <FooterCol head="Agency" items={COLOPHON.agency} className="col-4" />
-          <FooterCol head="Legal" items={COLOPHON.legal} className="col-4" />
-        </div>
-
-        <div className="rule" style={{ background: "var(--paper-3)" }} />
-
-        {/* Print credit + page number */}
-        <div
-          className="grid-12 footer-credit"
-          style={{ alignItems: "baseline", rowGap: 16 }}
-        >
-          <span
-            className="col-8"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              color: "var(--paper-3)",
-            }}
-          >
-            © {new Date().getFullYear()} Carbon Specialty Insurance Services. Set in Bodoni
-            Moda and IBM Plex. Built {new Date().getFullYear()} by the agency.
-          </span>
-          <span
-            className="col-4"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: "var(--paper-2)",
-              textAlign: "right",
-            }}
-          >
-            06 / 06 · End
+    <footer className="cs-footer">
+      <div className="container cs-footer__inner">
+        <div className="cs-footer__left">
+          <Link href="/" className="cs-footer__logo" aria-label="Carbon Specialty — home">
+            <span className="cs-footer__logo-name">CARBON</span>
+            <span className="cs-footer__logo-sub">SPECIALTY INSURANCE</span>
+          </Link>
+          <span className="cs-footer__credit">
+            © {year} Carbon Specialty. Licensed insurance brokerage.
           </span>
         </div>
+        <nav aria-label="Footer" className="cs-footer__nav">
+          {NAV.map(({ label, href }) => (
+            <Link key={href} href={href} className="cs-footer__link">
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
 
       <style>{`
-        @media (max-width: 900px) {
-          .footer-top .col-5,
-          .footer-top .col-6 { grid-column: 1 / -1 !important; }
-          .footer-cols .col-2,
-          .footer-cols .col-3,
-          .footer-cols .col-4 { grid-column: 1 / -1 !important; }
-          .footer-credit .col-4,
-          .footer-credit .col-8 { grid-column: 1 / -1 !important; text-align: left !important; }
+        .cs-footer {
+          background: var(--ink);
+          color: var(--paper);
+          border-top: 1px solid rgba(244,241,234,0.10);
+          padding: 40px 0;
+        }
+        .cs-footer__inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 32px;
+          flex-wrap: wrap;
+        }
+        .cs-footer__left {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          flex-wrap: wrap;
+        }
+        .cs-footer__logo {
+          display: inline-flex;
+          flex-direction: column;
+          line-height: 1;
+          text-decoration: none;
+          color: inherit;
+        }
+        .cs-footer__logo-name {
+          font-family: var(--font-wordmark);
+          font-size: 18px;
+          letter-spacing: 0.18em;
+          color: var(--paper);
+        }
+        .cs-footer__logo-sub {
+          margin-top: 5px;
+          font-family: var(--font-mono);
+          font-size: 8px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(244,241,234,0.50);
+        }
+        .cs-footer__credit {
+          font-family: var(--font-body);
+          font-size: 13px;
+          color: rgba(244,241,234,0.40);
+        }
+        .cs-footer__nav {
+          display: inline-flex;
+          gap: 24px;
+          flex-wrap: wrap;
+        }
+        .cs-footer__link {
+          font-family: var(--font-body);
+          font-size: 13px;
+          color: rgba(244,241,234,0.40);
+          text-decoration: none;
+          transition: color var(--dur-fast) var(--ease);
+        }
+        .cs-footer__link:hover { color: var(--paper); }
+
+        @media (max-width: 600px) {
+          .cs-footer { padding: 32px 0; }
+          .cs-footer__inner { flex-direction: column; align-items: flex-start; gap: 24px; }
+          .cs-footer__left { flex-direction: column; align-items: flex-start; gap: 12px; }
         }
       `}</style>
     </footer>
-  );
-}
-
-function FooterCol({
-  head,
-  items,
-  className,
-}: {
-  head: string;
-  items: { label: string; href: string }[];
-  className: string;
-}) {
-  return (
-    <div className={className} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <span
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          color: "var(--paper-3)",
-        }}
-      >
-        {head}
-      </span>
-      {items.map((i) => (
-        <Link
-          key={i.label}
-          href={i.href}
-          style={{
-            fontFamily: "var(--font-body)",
-            fontSize: 15,
-            color: "var(--paper)",
-            textDecoration: "none",
-            lineHeight: 1.4,
-            borderBottom: "1px solid transparent",
-            transition: "border-color var(--dur-fast) var(--ease)",
-            alignSelf: "flex-start",
-          }}
-          className="footer-link"
-        >
-          {i.label}
-        </Link>
-      ))}
-      <style>{`
-        .footer-link:hover { border-bottom-color: var(--ember); }
-      `}</style>
-    </div>
   );
 }

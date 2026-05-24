@@ -23,6 +23,8 @@
  * to retry or fall back to the contact-form mode in CarbonChat.
  */
 
+import type { PropertyFacts } from "@/lib/property-facts";
+
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string };
 
@@ -253,6 +255,7 @@ async function callChat(payload: {
   text: string;
   toolsExecuted: string[];
   payload?: Record<string, unknown>;
+  propertyFacts?: PropertyFacts;
 }> {
   let res: Response;
   try {
@@ -306,7 +309,14 @@ async function callChat(payload: {
   }
 
   if (!text) throw new ChatError("bad-shape", "Chat returned empty text");
-  return { text, toolsExecuted: data.tools_executed ?? [] };
+  // C.S.2.0 — surface property_facts to the client so the new inline
+  // intake console can populate the Property Summary side panel as the
+  // enrich_property tool returns data turn by turn.
+  const propertyFacts =
+    data.property_facts && typeof data.property_facts === "object"
+      ? (data.property_facts as PropertyFacts)
+      : undefined;
+  return { text, toolsExecuted: data.tools_executed ?? [], propertyFacts };
 }
 
 // =============================================================================
@@ -319,7 +329,7 @@ async function callChat(payload: {
  *  can surface "looking up property…" status when applicable). */
 export async function askCarbonIntake(
   history: ChatMessage[],
-): Promise<{ text: string; toolsExecuted: string[] }> {
+): Promise<{ text: string; toolsExecuted: string[]; propertyFacts?: PropertyFacts }> {
   return callChat({ mode: "intake", messages: history });
 }
 

@@ -1,93 +1,86 @@
 "use client";
 
 /**
- * Hero — sprint C.S.1.5.
+ * Hero — sprint C.S.2.0.
  *
- * Full-bleed video block. The video fills the section; masthead / eyebrow
- * / headline are absolutely positioned over it. Two pure ink-to-transparent
- * gradient overlays provide legibility at the top (for masthead) and the
- * bottom (for headline + the sharp transition into the paper section below).
+ * Two-column dark hero. Left (46%) carries the editorial copy
+ * (eyebrow micro-label, headline with pine italic accent, body,
+ * primary + secondary CTAs, three-stat metrics row, carrier strip).
+ * Right (54%) is the live inline `<CarbonChat inline />` console —
+ * the right column IS the intake. No separate slide-out is rendered
+ * at >768px.
  *
- * Lede + chat moved to <HeroLede /> in a separate paper-base section.
+ * Below the 768px breakpoint the right column collapses, the layout
+ * stacks, and the primary CTA opens the slide-out `CarbonChat` via
+ * the page-level ChatProvider (full-screen takeover from C.S.1.10).
+ *
+ * Background: ink base, painted-ladies hero video at ~18% opacity
+ * with a pine radial glow centered behind the right console. Video
+ * falls back to /images/painted-ladies.jpg if media is unavailable
+ * (autoPlay muted playsInline loop — same iOS-safe attribute set as
+ * prior sprints).
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, useReducedMotion } from "motion/react";
-import { Wordmark } from "./Wordmark";
+import { CarbonChat } from "./CarbonChat";
+import { useChat } from "./ChatProvider";
 
-const EASE = [0.2, 0.7, 0.2, 1] as const;
+const HEADLINE_PRIMARY = "Insurance for real estate investors,";
+const HEADLINE_ACCENT = "without the paperwork.";
+const BODY_COPY =
+  "Tell us what you own. Carbon turns the conversation into a clean property submission and connects you with real coverage options from a specialist.";
 
-const HEADLINE_LINE_1 = "Insuring the buildings that make our cities";
-const HEADLINE_LINE_2 = "home.";
+const METRICS: Array<{ value: string; label: string }> = [
+  { value: "$2B+", label: "Property value insured" },
+  { value: "500+", label: "Properties covered" },
+  { value: "<10 min", label: "Avg response time" },
+];
+
+const CARRIERS = "Chubb · Travelers · Liberty Mutual · Nationwide · and more";
 
 export function Hero() {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
+  const { open: onOpenChat } = useChat();
+  const [isDesktop, setIsDesktop] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
 
-  // Half-rate scroll parallax on the video, capped ±40px. Same logic as
-  // the old HeroVideo component — reduced-motion bails out cleanly.
+  // Track the >768px breakpoint so the primary CTA can route to the
+  // right surface: at desktop the inline console textarea is already
+  // visible, so we just focus it. At mobile the inline console isn't
+  // rendered, so we open the slide-out CarbonChat via ChatProvider.
   useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduceQuery.matches) return;
-
-    let raf = 0;
-    let pending = false;
-    const update = () => {
-      pending = false;
-      const rect = wrap.getBoundingClientRect();
-      const scrollPast = -rect.top;
-      let offset = scrollPast * 0.5;
-      if (offset > 40) offset = 40;
-      if (offset < -40) offset = -40;
-      wrap.style.setProperty("--hero-parallax", `${offset}px`);
-    };
-    const onScroll = () => {
-      if (pending) return;
-      pending = true;
-      raf = window.requestAnimationFrame(update);
-    };
+    const mq = window.matchMedia("(min-width: 769px)");
+    const update = () => setIsDesktop(mq.matches);
     update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
   }, []);
 
-  const headlineWords = HEADLINE_LINE_1.split(" ");
+  const onStartQuote = () => {
+    if (isDesktop) {
+      const el = document.getElementById("cs-console-input") as HTMLTextAreaElement | null;
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    } else {
+      onOpenChat();
+    }
+  };
 
   return (
     <section
+      ref={sectionRef}
       aria-labelledby="hero-headline"
-      className="hero-fullbleed"
-      style={{
-        position: "relative",
-        background: "var(--ink)",
-        color: "var(--paper)",
-        overflow: "hidden",
-        borderBottom: "1px solid var(--ink)",
-      }}
+      className="cs-hero"
     >
-      {/* === Full-bleed video layer === */}
-      <div
-        ref={wrapRef}
-        className="hero-video-wrap"
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 0,
-          transform: "translate3d(0, var(--hero-parallax, 0px), 0)",
-          willChange: "transform",
-        }}
-      >
-        {/* Desktop / tablet-landscape video — painted ladies (1600×918 landscape).
-            Visible at >768px via CSS in the <style> block below. */}
+      {/* Background video — desktop landscape, mobile portrait. Both
+          tags share the same parallax-free wrap. CSS toggles which
+          one is visible at the 768px breakpoint (carries over from
+          C.S.1.10.1). */}
+      <div className="cs-hero__bg" aria-hidden>
         <video
-          className="hero-video hero-video--desktop"
+          className="cs-hero__video cs-hero__video--desktop"
           autoPlay
           muted
           loop
@@ -99,12 +92,8 @@ export function Hero() {
           <source src="/videos/hero-painted-ladies.webm" type="video/webm" />
           <source src="/videos/hero-painted-ladies.mp4" type="video/mp4" />
         </video>
-        {/* C.S.1.10.1 — Mobile / tablet-portrait video (700×1312 portrait,
-            shot for narrow viewports). Visible at ≤768px via CSS. Both
-            tags share the parallax wrap so the scroll behavior is
-            identical on either side of the breakpoint. */}
         <video
-          className="hero-video hero-video--mobile"
+          className="cs-hero__video cs-hero__video--mobile"
           autoPlay
           muted
           loop
@@ -117,503 +106,297 @@ export function Hero() {
           <source src="/videos/hero-mobile.mp4" type="video/mp4" />
         </video>
         <img
-          src="/videos/hero-painted-ladies-poster.jpg"
+          src="/images/painted-ladies.jpg"
           alt=""
-          aria-hidden="true"
-          className="hero-video-poster hero-video-poster--desktop"
-          loading="eager"
-          decoding="async"
+          aria-hidden
+          className="cs-hero__bg-fallback"
         />
-        <img
-          src="/videos/hero-mobile-poster.jpg"
-          alt=""
-          aria-hidden="true"
-          className="hero-video-poster hero-video-poster--mobile"
-          loading="eager"
-          decoding="async"
-        />
+        <div className="cs-hero__bg-tint" />
+        <div className="cs-hero__bg-glow" />
       </div>
 
-      {/* === Top gradient overlay — masthead legibility. Strengthened in
-              C.S.1.5.1: top 12% near-pure ink (ground for wordmark + nav +
-              eyebrow row), then fade to clear by 42%. === */}
-      <div
-        aria-hidden
-        className="hero-overlay hero-overlay--top"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          background:
-            "linear-gradient(to bottom, rgba(11,11,12,0.92) 0%, rgba(11,11,12,0.92) 12%, rgba(11,11,12,0) 42%)",
-          pointerEvents: "none",
-        }}
-      />
+      <div className="container cs-hero__inner">
+        <div className="cs-hero__grid">
+          {/* LEFT — copy column */}
+          <div className="cs-hero__copy">
+            <span className="cs-hero__eyebrow">Insurance for real estate investors</span>
 
-      {/* === Bottom gradient overlay — headline legibility + ink→paper
-              transition. Strengthened in C.S.1.5.1: bottom 15% near-pure
-              ink (ground for the italic "home." line), then fade to clear
-              by 55%. === */}
-      <div
-        aria-hidden
-        className="hero-overlay hero-overlay--bottom"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          background:
-            "linear-gradient(to top, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 15%, rgba(11,11,12,0) 55%)",
-          pointerEvents: "none",
-        }}
-      />
+            <h1 id="hero-headline" className="cs-hero__headline">
+              {HEADLINE_PRIMARY}
+              <br />
+              <em className="cs-hero__headline-accent">{HEADLINE_ACCENT}</em>
+            </h1>
 
-      {/* === Content layer === */}
-      <div
-        className="container hero-content"
-        style={{
-          position: "relative",
-          zIndex: 2,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* MASTHEAD */}
-        <header
-          className="hero-masthead"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
-            alignItems: "center",
-            gap: 32,
-          }}
-        >
-          <Link
-            href="/"
-            style={{ textDecoration: "none", color: "inherit" }}
-            aria-label="Carbon Specialty — home"
-          >
-            <Wordmark size="sm" overVideo align="left" />
-          </Link>
+            <p className="cs-hero__body">{BODY_COPY}</p>
 
-          <nav aria-label="Primary" className="hero-nav" style={{ display: "flex", justifyContent: "center", gap: 32 }}>
-            {/* C.S.1.9 — `Insights` removed from primary nav. The
-                /insights route still exists but isn't advertised here
-                or in Header until there's editorial content to point
-                at. Order matches Header NAV. */}
-            {[
-              { label: "What we write", href: "/what-we-write" },
-              { label: "How it works", href: "/how-it-works" },
-              { label: "About", href: "/about" },
-              { label: "Contact", href: "/contact" },
-            ].map((l) => (
-              <Link key={l.href} href={l.href} className="nav-link nav-link--paper">
-                <span>{l.label}</span>
+            <div className="cs-hero__ctas">
+              <button
+                type="button"
+                onClick={onStartQuote}
+                className="cs-hero__cta-primary"
+              >
+                Start your quote
+                <Arrow />
+              </button>
+              <Link href="/how-it-works" className="cs-hero__cta-secondary">
+                See how it works
               </Link>
-            ))}
-          </nav>
+            </div>
 
-          {/* Mobile hamburger — only renders ≤960px (nav hidden). Routes
-              users to /contact as the simplest mobile menu fallback.
-              At ≤480px it widens to a 44×44 tap target and pulls flush
-              to the right safe-area inset (sprint C.S.1.6.2). */}
-          <Link
-            href="/contact"
-            aria-label="Open menu"
-            className="hero-hamburger"
-            style={{
-              display: "none",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 36,
-              height: 36,
-              border: "1px solid var(--paper)",
-              color: "var(--paper)",
-              textDecoration: "none",
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="4" y1="7"  x2="20" y2="7" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="17" x2="20" y2="17" />
-            </svg>
-          </Link>
+            <ul className="cs-hero__metrics">
+              {METRICS.map((m, i) => (
+                <li key={m.label} className="cs-hero__metric" data-first={i === 0 ? "true" : "false"}>
+                  <span className="cs-hero__metric-value">{m.value}</span>
+                  <span className="cs-hero__metric-label">{m.label}</span>
+                </li>
+              ))}
+            </ul>
 
-          <Link
-            href="/quote"
-            className="hero-quote-btn"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 18px",
-              border: "1px solid var(--paper)",
-              background: "var(--ink)",
-              color: "var(--paper)",
-              fontFamily: "var(--font-body)",
-              fontSize: 13,
-              textDecoration: "none",
-              transition: "background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease)",
-            }}
-          >
-            Get a quote
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <polyline points="14 6 20 12 14 18" />
-            </svg>
-          </Link>
-        </header>
+            <div className="cs-hero__carriers">
+              <span className="cs-hero__carriers-label">Placed with top carriers nationwide</span>
+              <span className="cs-hero__carriers-list">{CARRIERS}</span>
+            </div>
+          </div>
 
-        {/* EYEBROW ROW — paper text on video, hairline rule below at 30%.
-            At ≤480px the row tightens (status line sits at half the
-            current vertical air below the section number) and the
-            hairline switches to pine, 1px (sprint C.S.1.6.2). */}
-        <div
-          className="hero-eyebrow grid-12"
-          style={{
-            alignItems: "baseline",
-            paddingTop: 20,
-            marginTop: 16,
-            borderTop: "1px solid rgba(245,242,236,0.3)",
-          }}
-        >
-          <span
-            className="col-6 hero-eyebrow-left"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              color: "var(--paper)",
-            }}
-          >
-            00 — Get a quote
-          </span>
-          <span
-            className="col-6 hero-eyebrow-right"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              justifyContent: "flex-end",
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              color: "var(--paper)",
-            }}
-          >
-            <PulseDot />
-            <span>Carbon · online · responding in seconds</span>
-          </span>
-        </div>
-
-        {/* Spacer pushes the headline to the bottom third of the hero */}
-        <div style={{ flex: 1 }} />
-
-        {/* HEADLINE — line 1 anchored bottom-third (unchanged). Line 2
-            ("home." italic) drops further so its baseline sits ~5vh from
-            the bottom of the hero — squarely in the deepest portion of
-            the strengthened bottom gradient. Slight leading bump above
-            the italic line is intentional editorial spacing. */}
-        <motion.h1
-          id="hero-headline"
-          className="hero-h1"
-          initial="hidden"
-          animate="show"
-          variants={{
-            hidden: {},
-            show: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } },
-          }}
-          style={{
-            margin: 0,
-            // C.S.1.9 — bottom padding moved to .hero-location-anchor
-            // below so the new mono caps line owns the 5vh bottom
-            // anchor instead of having it stacked on top of the h1's
-            // own padding. "home." now sits 1.5rem above the anchor,
-            // anchor sits 5vh from the hero bottom.
-            paddingBottom: 0,
-            fontFamily: "var(--font-display)",
-            fontWeight: 400,
-            fontSize: "clamp(56px, 8.5vw, 120px)",
-            lineHeight: 1.04,
-            letterSpacing: "-0.025em",
-            color: "var(--paper)",
-            maxWidth: "14ch",
-            textWrap: "balance",
-          }}
-        >
-          {headlineWords.map((w, i) => (
-            <Word key={i} reduce={reduce}>{w}</Word>
-          ))}
-          <br />
-          {/* C.S.1.6.6 — `marginTop: "0.4em"` removed. The prior
-              "intentional editorial spacing" pushed "home." ~1.4× a
-              normal line-height below "our cities," reading as a
-              disconnected paragraph break instead of the end of the
-              sentence. Now sits at the natural line-height of the H1
-              so the two lines read continuous. */}
-          <span style={{ display: "inline-block" }}>
-            <Accent reduce={reduce} stagger={headlineWords.length}>{HEADLINE_LINE_2}</Accent>
-          </span>
-        </motion.h1>
-
-        {/* C.S.1.9 — Location anchor below the italic "home." line.
-            Mono caps treatment matching the eyebrow status row. Hidden
-            on mobile (≤480px) so the existing mobile hero rhythm —
-            stripped eyebrow, 64px headline, 8vh padding — stays as
-            shipped in C.S.1.6.6. */}
-        <div
-          className="hero-location-anchor"
-          style={{
-            marginTop: "1.5rem",
-            paddingBottom: "5vh",
-            fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--paper)",
-          }}
-        >
-          California Roots · Licensed Nationwide
+          {/* RIGHT — inline intake console (desktop only). At ≤768px
+              this column is hidden via CSS and the slide-out chat in
+              ChatProvider handles input. */}
+          <div className="cs-hero__console">
+            <CarbonChat inline open onClose={() => undefined} />
+          </div>
         </div>
       </div>
 
       <style>{`
-        /* Heights — desktop unchanged. C.S.1.10: tablet (≤768px) and
-           mobile (≤480px) switch to 100svh so the hero fills the
-           stable viewport height regardless of mobile browser chrome
-           (address bar) state. svh, not vh — vh includes the bar
-           band and causes a layout shift when it collapses. The
-           previous ≤600px rule (60vh, 460px min) is removed; the
-           new 768px rule supersedes it via wider coverage. */
-        .hero-fullbleed { height: 85vh; min-height: 640px; }
-        @media (max-width: 1024px) { .hero-fullbleed { height: 75vh; min-height: 560px; } }
-        @media (max-width: 768px)  { .hero-fullbleed { height: 100svh; min-height: 0; } }
-
-        /* Content layout */
-        .hero-content { padding-top: 40px; padding-bottom: 0; }
-        @media (max-width: 1024px) { .hero-content { padding-top: 24px; } }
-        @media (max-width: 600px)  { .hero-content { padding-top: 16px; } }
-
-        /* Video + poster. C.S.1.10.1 — two video variants live in the
-           same parallax wrap; CSS toggles which one is visible at the
-           768px breakpoint. Both autoplay/loop/muted/playsInline so
-           neither blocks iOS autoplay; both have preload="metadata"
-           so the hidden one only fetches its header bytes. */
-        .hero-video,
-        .hero-video-poster {
+        .cs-hero {
+          position: relative;
+          background: var(--ink);
+          color: var(--paper);
+          min-height: 800px;
+          padding: 80px 0 72px;
+          overflow: hidden;
+          isolation: isolate;
+        }
+        .cs-hero__inner { position: relative; z-index: 2; max-width: 1320px; }
+        .cs-hero__bg {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          overflow: hidden;
+        }
+        .cs-hero__video,
+        .cs-hero__bg-fallback {
           position: absolute;
           inset: 0;
           width: 100%;
           height: 100%;
           object-fit: cover;
-          display: block;
+          opacity: 0.18;
         }
-        /* Default (>768px): desktop video shown; both posters hidden
-           (the video covers them); mobile video hidden. */
-        .hero-video-poster { display: none; }
-        .hero-video--mobile,
-        .hero-video-poster--mobile { display: none; }
-
-        /* ≤768px: swap to the portrait mobile video. */
-        @media (max-width: 768px) {
-          .hero-video--desktop,
-          .hero-video-poster--desktop { display: none !important; }
-          .hero-video--mobile { display: block; }
+        .cs-hero__bg-fallback { display: none; }
+        .cs-hero__video--mobile { display: none; }
+        .cs-hero__bg-tint {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(to bottom, rgba(11,11,12,0.40) 0%, rgba(11,11,12,0.60) 100%);
         }
-
+        .cs-hero__bg-glow {
+          position: absolute;
+          right: -10%;
+          top: 10%;
+          width: 70%;
+          height: 80%;
+          background: radial-gradient(ellipse at center, rgba(31,77,56,0.15) 0%, transparent 60%);
+          pointer-events: none;
+        }
         @media (prefers-reduced-motion: reduce) {
-          .hero-video        { display: none; }
-          .hero-video-poster--desktop { display: block; }
-          .hero-video-wrap   { transform: none !important; }
-        }
-        /* Reduced motion + mobile: show the mobile poster instead. */
-        @media (prefers-reduced-motion: reduce) and (max-width: 768px) {
-          .hero-video-poster--desktop { display: none; }
-          .hero-video-poster--mobile { display: block; }
+          .cs-hero__video { display: none !important; }
+          .cs-hero__bg-fallback { display: block; }
         }
 
-        /* Nav link, paper variant — overrides the default --ink underline */
-        .nav-link--paper { color: var(--paper); }
-        .nav-link--paper::after { background: var(--paper); }
-        .nav-link--paper:hover { color: var(--paper); }
+        .cs-hero__grid {
+          display: grid;
+          grid-template-columns: 46% 54%;
+          column-gap: 56px;
+          align-items: center;
+          min-height: 640px;
+        }
 
-        /* Quote button hover — invert (paper bg, ink text) on hover so it
-           reads as the inverse of its rest state. Border stays paper. */
-        .hero-quote-btn:hover { background: var(--paper) !important; color: var(--ink) !important; }
+        .cs-hero__copy {
+          display: flex;
+          flex-direction: column;
+        }
 
-        /* Mobile gradient strengthening — C.S.1.10.
-           Top opacity bumped 0.92 → 0.95; bottom 0.95 → 0.97. Mobile
-           hero is the moment legibility is most at risk (video frame
-           bleed-through is most punishing on small screens), so err
-           toward darker. Stops unchanged from C.S.1.5.1:
-           Top:    18% near-pure ink → clear at 50%
-           Bottom: 20% near-pure ink → clear at 65% */
+        .cs-hero__eyebrow {
+          font-family: var(--font-mono);
+          font-size: 11px;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: #4A8F68;
+        }
+        .cs-hero__headline {
+          margin: 18px 0 0;
+          font-family: var(--font-display);
+          font-weight: 400;
+          font-size: 64px;
+          line-height: 1.0;
+          letter-spacing: -0.02em;
+          color: var(--paper);
+          text-wrap: balance;
+        }
+        .cs-hero__headline-accent {
+          font-style: italic;
+          color: #4A8F68;
+          font-family: var(--font-display);
+        }
+        .cs-hero__body {
+          margin: 24px 0 0;
+          font-family: var(--font-body);
+          font-size: 18px;
+          line-height: 1.6;
+          color: rgba(244,241,234,0.70);
+          max-width: 56ch;
+          text-wrap: pretty;
+        }
+        .cs-hero__ctas {
+          margin-top: 36px;
+          display: inline-flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .cs-hero__cta-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 13px 22px;
+          background: var(--ember);
+          color: var(--paper);
+          border: 1px solid var(--ember);
+          border-radius: 8px;
+          font-family: var(--font-body);
+          font-size: 13px;
+          font-weight: 500;
+          line-height: 1;
+          cursor: pointer;
+          transition: background var(--dur-fast) var(--ease),
+                      border-color var(--dur-fast) var(--ease);
+        }
+        .cs-hero__cta-primary:hover {
+          background: var(--ember-ink);
+          border-color: var(--ember-ink);
+        }
+        .cs-hero__cta-secondary {
+          display: inline-flex;
+          align-items: center;
+          padding: 13px 22px;
+          background: transparent;
+          color: var(--paper);
+          border: 1px solid rgba(244,241,234,0.20);
+          border-radius: 8px;
+          font-family: var(--font-body);
+          font-size: 13px;
+          font-weight: 500;
+          line-height: 1;
+          text-decoration: none;
+          transition: border-color var(--dur-fast) var(--ease),
+                      background var(--dur-fast) var(--ease);
+        }
+        .cs-hero__cta-secondary:hover {
+          border-color: rgba(244,241,234,0.40);
+          background: rgba(244,241,234,0.04);
+        }
+
+        .cs-hero__metrics {
+          list-style: none;
+          margin: 40px 0 0;
+          padding: 0;
+          display: flex;
+          align-items: stretch;
+          gap: 32px;
+        }
+        .cs-hero__metric {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding-left: 32px;
+          border-left: 1px solid rgba(244,241,234,0.20);
+        }
+        .cs-hero__metric[data-first="true"] {
+          padding-left: 0;
+          border-left: 0;
+        }
+        .cs-hero__metric-value {
+          font-family: var(--font-display);
+          font-size: 28px;
+          line-height: 1;
+          color: var(--paper);
+        }
+        .cs-hero__metric-label {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(244,241,234,0.50);
+        }
+
+        .cs-hero__carriers {
+          margin-top: 32px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .cs-hero__carriers-label {
+          font-family: var(--font-mono);
+          font-size: 10px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(244,241,234,0.40);
+        }
+        .cs-hero__carriers-list {
+          font-family: var(--font-body);
+          font-size: 14px;
+          color: rgba(244,241,234,0.50);
+        }
+
+        .cs-hero__console { min-width: 0; }
+
+        /* Tablet / mobile collapse — single column, drop the console
+           (the slide-out CarbonChat in ChatProvider handles input
+           at ≤768px). Mobile video swap fires at the same breakpoint. */
+        @media (max-width: 768px) {
+          .cs-hero { padding: 56px 0 56px; min-height: 0; }
+          .cs-hero__grid {
+            grid-template-columns: 1fr;
+            row-gap: 40px;
+            min-height: 0;
+          }
+          .cs-hero__console { display: none; }
+          .cs-hero__headline { font-size: 44px; }
+          .cs-hero__video--desktop { display: none !important; }
+          .cs-hero__video--mobile { display: block; }
+        }
         @media (max-width: 480px) {
-          .hero-overlay--top {
-            background: linear-gradient(to bottom, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 18%, rgba(11,11,12,0) 50%) !important;
+          .cs-hero { padding: 40px 0 48px; }
+          .cs-hero__headline { font-size: 36px; line-height: 1.05; }
+          .cs-hero__body { font-size: 16px; }
+          .cs-hero__metrics { flex-wrap: wrap; gap: 20px; }
+          .cs-hero__metric {
+            padding-left: 20px;
+            min-width: calc(50% - 20px);
           }
-          .hero-overlay--bottom {
-            background: linear-gradient(to top, rgba(11,11,12,0.97) 0%, rgba(11,11,12,0.97) 20%, rgba(11,11,12,0) 65%) !important;
-          }
-        }
-
-        /* Mobile nav: collapse, show hamburger */
-        @media (max-width: 960px) {
-          .hero-nav        { display: none !important; }
-          .hero-hamburger  { display: inline-flex !important; }
-          .hero-quote-btn  { display: none !important; }
-        }
-
-        /* Eyebrow row stacks vertically on mobile */
-        @media (max-width: 600px) {
-          .hero-eyebrow .hero-eyebrow-left,
-          .hero-eyebrow .hero-eyebrow-right { grid-column: 1 / -1 !important; justify-content: flex-start !important; }
-          .hero-eyebrow .hero-eyebrow-right { margin-top: 6px; }
-        }
-
-        /* C.S.1.6.4 — Mobile masthead is wordmark + hamburger only.
-           Eyebrow row stripped at ≤480px. The status pulse only exists
-           in CarbonChat's header now; nothing page-level above the hero.
-           Hero text dominates: section grows to 90vh, headline 64px.
-
-           C.S.1.6.6 ROOT-CAUSE FIX for hamburger position. Prior
-           sprints (C.S.1.6.2 / C.S.1.6.5) tried to control the
-           hamburger's offset with margin-right + safe-area-inset
-           gymnastics. None of them worked because the bug wasn't
-           in the hamburger's own box — it was in CSS Grid auto-flow.
-
-           .hero-masthead is "display: grid; grid-template-columns:
-           auto 1fr auto; gap: 32px" with four children in source
-           order: [wordmark, nav, hamburger, quote-btn]. On mobile
-           (≤960px) nav + quote-btn get "display: none" which removes
-           them from grid layout entirely. CSS Grid auto-flow then
-           places the remaining two visible children left-to-right:
-           wordmark → col 1 ("auto"), hamburger → col 2 ("1fr"). The
-           hamburger sits at the LEFT edge of the 1fr track (default
-           "justify-self: start"), adjacent to the wordmark with only
-           the 32px column gap separating them. Col 3 ("auto") is
-           empty and collapses to ~0 width, but the 32px gap to its
-           left still phantom-pads the right side. Net result: a fat
-           band of empty space between the hamburger and the right
-           edge — the ~80px gap the operator observed.
-
-           Fix: at ≤480px, drop the grid template and use flexbox
-           "justify-content: space-between" instead. With only two
-           visible children, wordmark sits at container-inner-left
-           (16px from viewport via .container with padding-inline of
-           var(--gutter-sm) = 16px) and hamburger sits at
-           container-inner-right (16px from viewport). The 16px hard
-           spec falls out of the container padding naturally — no
-           magic offsets, no env(safe-area-inset-right), no negative
-           margins. Tap target stays 44×44. */
-        @media (max-width: 480px) {
-          .hero-eyebrow { display: none !important; }
-          /* C.S.1.9 — location anchor is desktop/tablet only; mobile
-             hero rhythm shipped in C.S.1.6.6 stays untouched. */
-          .hero-location-anchor { display: none !important; }
-          /* C.S.1.10 — 100svh replaces the prior 90vh + 560px min.
-             Stable viewport height eliminates the address-bar layout
-             shift on iOS and Android Chrome. !important retained so
-             this beats the 768 / 1024 vh rules above regardless of
-             source-order surprises after future sprints. */
-          .hero-fullbleed { height: 100svh !important; min-height: 0 !important; }
-          .hero-h1 {
-            font-size: 64px !important;
-            line-height: 1.05 !important;
-            max-width: 100% !important;
-            padding-bottom: 8vh !important;
-          }
-          .hero-masthead {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            gap: 0 !important;
-          }
-          .hero-hamburger {
-            width: 44px !important;
-            height: 44px !important;
-            margin: 0 !important;
-          }
+          .cs-hero__metric[data-first="true"] { padding-left: 0; }
         }
       `}</style>
     </section>
   );
 }
 
-function Word({ children, reduce }: { children: React.ReactNode; reduce: boolean | null }) {
+function Arrow() {
   return (
-    <motion.span
-      variants={{
-        hidden: { opacity: 0, y: reduce ? 0 : 10 },
-        show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
-      }}
-      style={{ display: "inline-block", whiteSpace: "pre", marginRight: "0.22em" }}
-    >
-      {children}
-    </motion.span>
-  );
-}
-
-function Accent({
-  children,
-  reduce,
-  stagger = 0,
-}: {
-  children: React.ReactNode;
-  reduce: boolean | null;
-  stagger?: number;
-}) {
-  return (
-    <motion.em
-      variants={{
-        hidden: { opacity: 0, y: reduce ? 0 : 14, scale: reduce ? 1 : 0.98 },
-        show: {
-          opacity: 1,
-          y: 0,
-          scale: 1,
-          transition: { duration: 0.85, ease: EASE, delay: stagger * 0.05 + 0.2 },
-        },
-      }}
-      style={{
-        display: "inline-block",
-        fontFamily: "var(--font-wordmark)",
-        fontStyle: "italic",
-        fontWeight: 400,
-        color: "var(--ember)",
-        paddingRight: "0.06em",
-        // C.S.1.5.1 — soft, large-radius ink halo so the pine italic
-        // reads cleanly against the video; the strengthened bottom
-        // gradient does most of the work.
-        textShadow: "0 2px 32px rgba(11, 11, 12, 0.5)",
-      }}
-    >
-      {children}
-    </motion.em>
-  );
-}
-
-function PulseDot() {
-  return (
-    <span aria-hidden className="hero-pulse-dot">
-      <style>{`
-        .hero-pulse-dot {
-          display: inline-block;
-          width: 6px;
-          height: 6px;
-          background: var(--ember);
-          animation: hero-pulse-dot-anim 2s ease-in-out infinite;
-        }
-        @keyframes hero-pulse-dot-anim {
-          0%   { opacity: 1; }
-          50%  { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .hero-pulse-dot { animation: none; opacity: 1; }
-        }
-      `}</style>
-    </span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <polyline points="14 6 20 12 14 18" />
+    </svg>
   );
 }

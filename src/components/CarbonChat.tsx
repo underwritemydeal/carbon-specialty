@@ -11,6 +11,7 @@ import {
   type ChatMessage,
   type CarbonContactPayload,
 } from "@/lib/carbon-intake";
+import type { PropertyFacts } from "@/lib/property-facts";
 import { carbonSpecialtyConfig } from "@/lib/tenants/carbon-specialty";
 import { loadGooglePlaces } from "@/lib/google-places-loader";
 import {
@@ -61,16 +62,26 @@ export function CarbonChat({
   onClose,
   initialMessage,
   onClearInitial,
+  inline = false,
 }: {
   open: boolean;
   onClose: () => void;
   initialMessage?: string | null;
   onClearInitial?: () => void;
+  /** C.S.2.0 — render as an embedded console inside the hero (>768px)
+   *  instead of the slide-out aside. Passes `open` is ignored when
+   *  inline; the console is always rendered and ready for input. */
+  inline?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  // C.S.2.0 — track property facts as they come back from the chat
+  // server so the inline console's right-strip Property Summary panel
+  // populates turn-by-turn. Same object the chat already produces via
+  // the enrich_property tool — we just surface it to the client.
+  const [propertyFacts, setPropertyFacts] = useState<PropertyFacts | null>(null);
   // C.S.1.6 — surfaces "looking up property…" in place of the typing-dot
   // label while the most-recent send is in flight AND the user's message
   // looked like it might contain an address. Cleared on every reply.
@@ -353,7 +364,7 @@ export function CarbonChat({
       // through to contact-form mode. Auth, bad-shape, and rate-limit
       // errors short-circuit immediately.
       let attempt = 0;
-      let result: { text: string; toolsExecuted: string[] } | null = null;
+      let result: { text: string; toolsExecuted: string[]; propertyFacts?: PropertyFacts } | null = null;
       while (attempt < 2 && result === null) {
         try {
           result = await askCarbonIntake(history);
@@ -394,6 +405,14 @@ export function CarbonChat({
       }
 
       const reply = result.text;
+      // C.S.2.0 — capture freshly enriched property facts so the
+      // inline console's Property Summary panel re-renders with the
+      // new values. We only overwrite when the server returned facts
+      // on this turn (a turn without enrich_property leaves prior
+      // facts in place).
+      if (result.propertyFacts) {
+        setPropertyFacts(result.propertyFacts);
+      }
       const after: ChatMessage[] = [...history, { role: "assistant", content: reply }];
       // C.S.1.6.2 — mark the assistant index as part of the voice turn
       // BEFORE setMessages so the auto-play effect (which depends on
@@ -617,6 +636,9 @@ export function CarbonChat({
     referenceRef.current = generateReferenceId();
     // Reset fully — including the first-message autocomplete.
     setAutocompleteEnabled(true);
+    // C.S.2.0 — clear extracted property facts so the inline summary
+    // panel returns to its empty "—" state on a fresh conversation.
+    setPropertyFacts(null);
   };
 
   // -------------------------------------------------------------------------
@@ -661,6 +683,207 @@ export function CarbonChat({
       setContactSubmitting(false);
     }
   };
+
+  // ===========================================================================
+  // C.S.2.0 — Inline console render path. When `inline=true` the chat
+  // is embedded inside the hero's right column rather than rendered as
+  // a slide-out aside. No backdrop, no slide animation, no close
+  // button; a Property Summary side strip lives to the right of the
+  // chat column and populates as enrich_property returns data.
+  // ===========================================================================
+  if (inline) {
+    return (
+      <div className="cs-console" role="region" aria-label="Property intake console">
+        <header className="cs-console__head">
+          <div className="cs-console__head-left">
+            <span className="cs-console__title">Property Intake</span>
+            <span className="cs-console__sub">Quote started · Specialist review next</span>
+          </div>
+          <div className="cs-console__head-right">
+            <PinePulseDot />
+            <span className="cs-console__secure">Secure session</span>
+          </div>
+        </header>
+
+        <div className="cs-console__body">
+          {/* Chat column — messages + input */}
+          <div className="cs-console__chat">
+            <div
+              ref={scrollRef}
+              className="cs-console__messages"
+            >
+              {messages.map((m, i) => (
+                <ConsoleMessage key={i} role={m.role} content={m.content} />
+              ))}
+              {thinking && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      letterSpacing: "0.18em",
+                      textTransform: "uppercase",
+                      color: "#4A8F68",
+                    }}
+                  >
+                    Carbon
+                  </span>
+                  {propertyLookup && (
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        fontSize: 11,
+                        color: "rgba(244,241,234,0.6)",
+                      }}
+                    >
+                      Looking up property…
+                    </span>
+                  )}
+                  <Typing />
+                </div>
+              )}
+              {error && (
+                <div role="alert" className="cs-console__error">{error}</div>
+              )}
+
+              {mode === "contact-form" && (
+                <ContactForm
+                  name={contactName}
+                  email={contactEmail}
+                  note={contactNote}
+                  submitting={contactSubmitting}
+                  onName={setContactName}
+                  onEmail={setContactEmail}
+                  onNote={setContactNote}
+                  onSubmit={submitContactForm}
+                />
+              )}
+            </div>
+
+            {mode === "chat" && (
+              <div className="cs-console__input-area">
+                <div className="cs-console__secure-line">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <rect x="4" y="11" width="16" height="10" rx="2" />
+                    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                  </svg>
+                  <span>Secure &amp; confidential</span>
+                </div>
+                <div className="cs-console__input-row">
+                  <label htmlFor="cs-console-input" className="sr-only">Reply</label>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <textarea
+                      id="cs-console-input"
+                      ref={inputRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Type your answer..."
+                      rows={2}
+                      disabled={thinking}
+                      className="cs-console__textarea"
+                      style={
+                        listening && interim
+                          ? { color: "transparent", caretColor: "var(--paper)" }
+                          : undefined
+                      }
+                    />
+                    {listening && interim && (
+                      <div
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          padding: "10px 0",
+                          fontFamily: "var(--font-body)",
+                          fontSize: 14,
+                          lineHeight: 1.45,
+                          color: "var(--paper)",
+                          pointerEvents: "none",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {input}
+                        {input && !input.endsWith(" ") ? " " : ""}
+                        <span style={{ opacity: 0.6 }}>{interim}</span>
+                      </div>
+                    )}
+                    {autocompleteEnabled && (
+                      <input
+                        ref={placesInputRef}
+                        type="text"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        name="carbon-places-shadow"
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          width: "100%",
+                          height: "100%",
+                          opacity: 0,
+                          pointerEvents: "none",
+                          border: 0,
+                          padding: 0,
+                          margin: 0,
+                        }}
+                      />
+                    )}
+                  </div>
+                  {voiceSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleMic}
+                      disabled={thinking}
+                      aria-label={listening ? "Stop dictation" : "Dictate your reply"}
+                      aria-pressed={listening}
+                      className="cs-console__mic"
+                      data-listening={listening ? "true" : "false"}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill={listening ? "currentColor" : "none"}
+                        stroke="currentColor"
+                        strokeWidth={listening ? 0 : 1.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <rect x="9" y="3" width="6" height="12" rx="3" />
+                        <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeWidth={1.5} />
+                        <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" strokeWidth={1.5} />
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={send}
+                    disabled={!input.trim() || thinking}
+                    aria-label="Send message"
+                    className="cs-console__send"
+                    data-armed={input.trim() && !thinking ? "true" : "false"}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <line x1="4" y1="12" x2="20" y2="12" />
+                      <polyline points="14 6 20 12 14 18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Property Summary side panel */}
+          <PropertySummaryPanel facts={propertyFacts} />
+        </div>
+
+        <ConsoleStyles />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1381,3 +1604,390 @@ const iconBtn: React.CSSProperties = {
   cursor: "pointer",
   borderRadius: 0,
 };
+
+/* ============================================================================
+ * C.S.2.0 — Inline console helpers
+ *
+ * `ConsoleMessage` is the inline-mode message renderer. Carbon replies
+ * are flat-typography (no bubble); user replies sit in a pine-tint
+ * rounded bubble right-aligned. No timestamps for now — keeps the
+ * console clean. `PropertySummaryPanel` renders the right strip and
+ * derives fields from PropertyFacts (flat + grouped). `PinePulseDot`
+ * is the secure-session indicator. `ConsoleStyles` is a single
+ * <style> block scoped via classnames; rendered inside the console so
+ * it travels with the component.
+ * ============================================================================ */
+
+function ConsoleMessage({ role, content }: { role: "user" | "assistant"; content: string }) {
+  const isAgent = role === "assistant";
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        alignItems: isAgent ? "flex-start" : "flex-end",
+      }}
+    >
+      {isAgent ? (
+        <div className="cs-console__msg cs-console__msg--agent">{content}</div>
+      ) : (
+        <div className="cs-console__msg cs-console__msg--user">{content}</div>
+      )}
+    </div>
+  );
+}
+
+function PinePulseDot() {
+  return (
+    <span aria-hidden className="cs-console__pulse">
+      <style>{`
+        .cs-console__pulse {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #4A8F68;
+          animation: cs-console-pulse 2s ease-in-out infinite;
+        }
+        @keyframes cs-console-pulse {
+          0%   { opacity: 1; }
+          50%  { opacity: 0.4; }
+          100% { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cs-console__pulse { animation: none; opacity: 1; }
+        }
+      `}</style>
+    </span>
+  );
+}
+
+function PropertySummaryPanel({ facts }: { facts: PropertyFacts | null }) {
+  // Pull values from both the flat fields (legacy) and grouped sections
+  // (county-direct). Building-section values take precedence when
+  // present because they're the source the flat fields are derived from.
+  const propertyType =
+    facts?.building?.use_desc ??
+    facts?.land_use_desc ??
+    null;
+  const units = facts?.building?.units ?? facts?.units ?? null;
+  const yearBuilt = facts?.building?.year_built ?? facts?.year_built ?? null;
+  const construction = facts?.building?.construction_type ?? facts?.construction_type ?? null;
+  const location = truncateAddress(facts?.canonical_address ?? facts?.query_address ?? null);
+  // Occupancy isn't in PropertyFacts today — the panel renders "—"
+  // until the intake flow adds it as a separate signal.
+  const occupancy: string | null = null;
+
+  const rows: Array<{ label: string; value: string | number | null }> = [
+    { label: "Property type", value: propertyType },
+    { label: "Units", value: units },
+    { label: "Year built", value: yearBuilt },
+    { label: "Occupancy", value: occupancy },
+    { label: "Location", value: location },
+    { label: "Construction", value: construction },
+  ];
+
+  return (
+    <aside className="cs-console__panel" aria-label="Property summary">
+      <div className="cs-console__panel-head">
+        <span className="cs-console__panel-title">Property Summary</span>
+        <div className="cs-console__panel-status">
+          <PinePulseDot />
+          <span>In progress</span>
+        </div>
+      </div>
+      <ul className="cs-console__panel-rows">
+        {rows.map((r) => (
+          <li
+            key={r.label}
+            className="cs-console__panel-row"
+            data-populated={r.value != null && r.value !== "" ? "true" : "false"}
+          >
+            <span className="cs-console__panel-row-label">{r.label}</span>
+            <span className="cs-console__panel-row-value">
+              {r.value == null || r.value === "" ? "—" : r.value}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="cs-console__panel-foot">
+        <span>View full summary →</span>
+      </div>
+    </aside>
+  );
+}
+
+function truncateAddress(addr: string | null): string | null {
+  if (!addr) return null;
+  // Drop the trailing ", USA" the geocoder appends, then cap at a
+  // reasonable display length so the panel value doesn't wrap to four
+  // lines on a long street name.
+  const trimmed = addr.replace(/,\s*USA\s*$/i, "").trim();
+  if (trimmed.length <= 40) return trimmed;
+  return `${trimmed.slice(0, 37)}…`;
+}
+
+function ConsoleStyles() {
+  return (
+    <style>{`
+      .cs-console {
+        background: #0F1517;
+        border: 1px solid rgba(244,241,234,0.12);
+        border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+        display: flex;
+        flex-direction: column;
+        height: 600px;
+        max-height: calc(100svh - 200px);
+        overflow: hidden;
+      }
+      .cs-console__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(244,241,234,0.08);
+      }
+      .cs-console__head-left {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .cs-console__title {
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: rgba(244,241,234,0.90);
+        line-height: 1;
+      }
+      .cs-console__sub {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+        color: #4A8F68;
+        line-height: 1;
+      }
+      .cs-console__head-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(244,241,234,0.50);
+      }
+      .cs-console__body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 200px;
+        min-height: 0;
+      }
+      .cs-console__chat {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .cs-console__messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .cs-console__msg {
+        font-family: var(--font-body);
+        font-size: 14px;
+        line-height: 1.5;
+        max-width: 85%;
+        white-space: pre-wrap;
+      }
+      .cs-console__msg--agent {
+        color: rgba(244,241,234,0.85);
+        background: transparent;
+        padding: 0;
+      }
+      .cs-console__msg--user {
+        color: var(--paper);
+        background: rgba(31,77,56,0.20);
+        padding: 10px 14px;
+        border-radius: 8px;
+      }
+      .cs-console__error {
+        padding: 10px 14px;
+        border: 1px solid var(--err);
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: var(--err);
+        line-height: 1.5;
+        border-radius: 4px;
+      }
+      .cs-console__input-area {
+        border-top: 1px solid rgba(244,241,234,0.08);
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .cs-console__secure-line {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: center;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(244,241,234,0.30);
+      }
+      .cs-console__input-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+      }
+      .cs-console__textarea {
+        width: 100%;
+        resize: none;
+        border: 0;
+        outline: none;
+        background: transparent;
+        padding: 10px 0;
+        font-family: var(--font-body);
+        font-size: 14px;
+        line-height: 1.45;
+        color: var(--paper);
+        min-height: 36px;
+        max-height: 160px;
+      }
+      .cs-console__textarea::placeholder {
+        color: rgba(244,241,234,0.35);
+      }
+      .cs-console__mic {
+        width: 36px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: transparent;
+        color: rgba(244,241,234,0.70);
+        border: 1px solid rgba(244,241,234,0.20);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background var(--dur-fast) var(--ease),
+                    color var(--dur-fast) var(--ease),
+                    border-color var(--dur-fast) var(--ease);
+      }
+      .cs-console__mic[data-listening="true"] {
+        background: var(--ember);
+        border-color: var(--ember);
+        color: var(--paper);
+      }
+      .cs-console__send {
+        width: 36px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: rgba(244,241,234,0.10);
+        color: rgba(244,241,234,0.50);
+        border: 0;
+        border-radius: 50%;
+        cursor: not-allowed;
+        transition: background var(--dur-fast) var(--ease),
+                    color var(--dur-fast) var(--ease);
+      }
+      .cs-console__send[data-armed="true"] {
+        background: var(--ember);
+        color: var(--paper);
+        cursor: pointer;
+      }
+      .cs-console__panel {
+        border-left: 1px solid rgba(244,241,234,0.08);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow-y: auto;
+      }
+      .cs-console__panel-head {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-bottom: 8px;
+      }
+      .cs-console__panel-title {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(244,241,234,0.40);
+      }
+      .cs-console__panel-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+        color: rgba(244,241,234,0.50);
+      }
+      .cs-console__panel-rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .cs-console__panel-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-left: 8px;
+        border-left: 2px solid transparent;
+      }
+      .cs-console__panel-row[data-populated="true"] {
+        border-left-color: var(--ember);
+      }
+      .cs-console__panel-row-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(244,241,234,0.40);
+      }
+      .cs-console__panel-row-value {
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: rgba(244,241,234,0.90);
+        line-height: 1.3;
+      }
+      .cs-console__panel-foot {
+        margin-top: auto;
+        padding-top: 12px;
+        font-family: var(--font-body);
+        font-size: 13px;
+        color: rgba(244,241,234,0.60);
+        cursor: pointer;
+      }
+
+      /* On narrow consoles (e.g. tablet portrait when inline still
+         renders), collapse the property panel below the chat. */
+      @media (max-width: 900px) {
+        .cs-console__body {
+          grid-template-columns: 1fr;
+        }
+        .cs-console__panel {
+          border-left: 0;
+          border-top: 1px solid rgba(244,241,234,0.08);
+        }
+      }
+    `}</style>
+  );
+}
