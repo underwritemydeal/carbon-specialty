@@ -651,16 +651,19 @@ export function HeroLede() {
            The chat box stacks vertically: textarea on top, "Ask Carbon
            →" full-width below (pine fill, paper text, 64px tall). */
         @media (max-width: 480px) {
-          /* Reshape the lede paragraph. */
+          /* Reshape the lede paragraph. C.S.1.10: dropped from 24px
+             to 19px to land inside the 18-20px readability band on
+             phones. The italic pull-quote below stays at 32px — it's
+             the editorial focal point of the body lede. */
           #hero-lede {
             display: flex !important;
             flex-direction: column !important;
             font-family: var(--font-display) !important;
-            font-size: 24px !important;
-            line-height: 1.32 !important;
+            font-size: 19px !important;
+            line-height: 1.45 !important;
           }
           #hero-lede .hero-lede-s1 {
-            font-size: 24px;
+            font-size: 19px;
             color: var(--ink);
           }
           #hero-lede .hero-lede-five-unit {

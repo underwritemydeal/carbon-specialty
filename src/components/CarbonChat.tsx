@@ -684,6 +684,7 @@ export function CarbonChat({
         aria-modal="true"
         aria-labelledby="carbon-chat-title"
         aria-hidden={!open}
+        className="carbon-chat-panel"
         style={{
           position: "fixed",
           top: 0,
@@ -699,6 +700,27 @@ export function CarbonChat({
           flexDirection: "column",
         }}
       >
+        {/* C.S.1.10 — Full-screen takeover on mobile (≤480px). Inline
+            styles above set the desktop slide-out panel (520px wide,
+            anchored right). The CSS below overrides them at the
+            mobile breakpoint with !important so the panel becomes a
+            true takeover: inset 0, 100dvh (stable across iOS
+            address-bar collapse/expand), no left border, full-width
+            slide-up instead of slide-from-right. */}
+        <style>{`
+          @media (max-width: 480px) {
+            .carbon-chat-panel {
+              top: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
+              left: 0 !important;
+              width: 100vw !important;
+              height: 100dvh !important;
+              border-left: 0 !important;
+              transform: ${open ? "translateY(0) !important" : "translateY(100%) !important"};
+            }
+          }
+        `}</style>
         <header
           style={{
             padding: "20px 28px",

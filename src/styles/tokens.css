@@ -332,7 +332,15 @@
    @media (max-width: 375px) block above and the base .wordmark.sm
    rules, regardless of source order. */
 @media (max-width: 480px) {
-  .wordmark .wm-name { font-size: 28px !important; letter-spacing: 0.28em !important; padding-left: 0.28em !important; }
+  /* C.S.1.10 — Lock CARBON to a single line on mobile. The wordmark
+     sits opposite a 44×44 hamburger on a 16px-gutter container, so
+     the available width can drop below the rendered width on the
+     narrowest viewports (≤360px). `white-space: nowrap` prevents
+     the browser from breaking CARBON onto two lines; the pine
+     RB-rule below remains anchored under the "RB" letters because
+     .wm-rule is absolutely positioned relative to .wm-mark and
+     centered via translateX(-50%) — unaffected by the wrap rule. */
+  .wordmark .wm-name { font-size: 28px !important; letter-spacing: 0.28em !important; padding-left: 0.28em !important; white-space: nowrap !important; }
   .wordmark .wm-sub  {
     display: block !important;
     font-family: var(--font-mono) !important;

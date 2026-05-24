@@ -84,8 +84,10 @@ export function Hero() {
           willChange: "transform",
         }}
       >
+        {/* Desktop / tablet-landscape video — painted ladies (1600×918 landscape).
+            Visible at >768px via CSS in the <style> block below. */}
         <video
-          className="hero-video"
+          className="hero-video hero-video--desktop"
           autoPlay
           muted
           loop
@@ -97,11 +99,36 @@ export function Hero() {
           <source src="/videos/hero-painted-ladies.webm" type="video/webm" />
           <source src="/videos/hero-painted-ladies.mp4" type="video/mp4" />
         </video>
+        {/* C.S.1.10.1 — Mobile / tablet-portrait video (700×1312 portrait,
+            shot for narrow viewports). Visible at ≤768px via CSS. Both
+            tags share the parallax wrap so the scroll behavior is
+            identical on either side of the breakpoint. */}
+        <video
+          className="hero-video hero-video--mobile"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster="/videos/hero-mobile-poster.jpg"
+          aria-hidden="true"
+        >
+          <source src="/videos/hero-mobile.webm" type="video/webm" />
+          <source src="/videos/hero-mobile.mp4" type="video/mp4" />
+        </video>
         <img
           src="/videos/hero-painted-ladies-poster.jpg"
           alt=""
           aria-hidden="true"
-          className="hero-video-poster"
+          className="hero-video-poster hero-video-poster--desktop"
+          loading="eager"
+          decoding="async"
+        />
+        <img
+          src="/videos/hero-mobile-poster.jpg"
+          alt=""
+          aria-hidden="true"
+          className="hero-video-poster hero-video-poster--mobile"
           loading="eager"
           decoding="async"
         />
@@ -353,17 +380,27 @@ export function Hero() {
       </div>
 
       <style>{`
-        /* Heights */
+        /* Heights — desktop unchanged. C.S.1.10: tablet (≤768px) and
+           mobile (≤480px) switch to 100svh so the hero fills the
+           stable viewport height regardless of mobile browser chrome
+           (address bar) state. svh, not vh — vh includes the bar
+           band and causes a layout shift when it collapses. The
+           previous ≤600px rule (60vh, 460px min) is removed; the
+           new 768px rule supersedes it via wider coverage. */
         .hero-fullbleed { height: 85vh; min-height: 640px; }
         @media (max-width: 1024px) { .hero-fullbleed { height: 75vh; min-height: 560px; } }
-        @media (max-width: 600px)  { .hero-fullbleed { height: 60vh; min-height: 460px; } }
+        @media (max-width: 768px)  { .hero-fullbleed { height: 100svh; min-height: 0; } }
 
         /* Content layout */
         .hero-content { padding-top: 40px; padding-bottom: 0; }
         @media (max-width: 1024px) { .hero-content { padding-top: 24px; } }
         @media (max-width: 600px)  { .hero-content { padding-top: 16px; } }
 
-        /* Video + poster */
+        /* Video + poster. C.S.1.10.1 — two video variants live in the
+           same parallax wrap; CSS toggles which one is visible at the
+           768px breakpoint. Both autoplay/loop/muted/playsInline so
+           neither blocks iOS autoplay; both have preload="metadata"
+           so the hidden one only fetches its header bytes. */
         .hero-video,
         .hero-video-poster {
           position: absolute;
@@ -373,11 +410,28 @@ export function Hero() {
           object-fit: cover;
           display: block;
         }
+        /* Default (>768px): desktop video shown; both posters hidden
+           (the video covers them); mobile video hidden. */
         .hero-video-poster { display: none; }
+        .hero-video--mobile,
+        .hero-video-poster--mobile { display: none; }
+
+        /* ≤768px: swap to the portrait mobile video. */
+        @media (max-width: 768px) {
+          .hero-video--desktop,
+          .hero-video-poster--desktop { display: none !important; }
+          .hero-video--mobile { display: block; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .hero-video        { display: none; }
-          .hero-video-poster { display: block; }
+          .hero-video-poster--desktop { display: block; }
           .hero-video-wrap   { transform: none !important; }
+        }
+        /* Reduced motion + mobile: show the mobile poster instead. */
+        @media (prefers-reduced-motion: reduce) and (max-width: 768px) {
+          .hero-video-poster--desktop { display: none; }
+          .hero-video-poster--mobile { display: block; }
         }
 
         /* Nav link, paper variant — overrides the default --ink underline */
@@ -389,15 +443,19 @@ export function Hero() {
            reads as the inverse of its rest state. Border stays paper. */
         .hero-quote-btn:hover { background: var(--paper) !important; color: var(--ink) !important; }
 
-        /* Mobile gradient strengthening — C.S.1.5.1.
+        /* Mobile gradient strengthening — C.S.1.10.
+           Top opacity bumped 0.92 → 0.95; bottom 0.95 → 0.97. Mobile
+           hero is the moment legibility is most at risk (video frame
+           bleed-through is most punishing on small screens), so err
+           toward darker. Stops unchanged from C.S.1.5.1:
            Top:    18% near-pure ink → clear at 50%
            Bottom: 20% near-pure ink → clear at 65% */
         @media (max-width: 480px) {
           .hero-overlay--top {
-            background: linear-gradient(to bottom, rgba(11,11,12,0.92) 0%, rgba(11,11,12,0.92) 18%, rgba(11,11,12,0) 50%) !important;
+            background: linear-gradient(to bottom, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 18%, rgba(11,11,12,0) 50%) !important;
           }
           .hero-overlay--bottom {
-            background: linear-gradient(to top, rgba(11,11,12,0.95) 0%, rgba(11,11,12,0.95) 20%, rgba(11,11,12,0) 65%) !important;
+            background: linear-gradient(to top, rgba(11,11,12,0.97) 0%, rgba(11,11,12,0.97) 20%, rgba(11,11,12,0) 65%) !important;
           }
         }
 
@@ -455,7 +513,12 @@ export function Hero() {
           /* C.S.1.9 — location anchor is desktop/tablet only; mobile
              hero rhythm shipped in C.S.1.6.6 stays untouched. */
           .hero-location-anchor { display: none !important; }
-          .hero-fullbleed { height: 90vh !important; min-height: 560px !important; }
+          /* C.S.1.10 — 100svh replaces the prior 90vh + 560px min.
+             Stable viewport height eliminates the address-bar layout
+             shift on iOS and Android Chrome. !important retained so
+             this beats the 768 / 1024 vh rules above regardless of
+             source-order surprises after future sprints. */
+          .hero-fullbleed { height: 100svh !important; min-height: 0 !important; }
           .hero-h1 {
             font-size: 64px !important;
             line-height: 1.05 !important;
