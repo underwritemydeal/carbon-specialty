@@ -375,16 +375,33 @@ export function Hero() {
           .cs-hero__video--desktop { display: none !important; }
           .cs-hero__video--mobile { display: block; }
         }
+        /* C.S.2.0.1 (mobile patch) — stats stack vertically at
+           ≤768px. The horizontal row with 32px-padding vertical
+           dividers was overflowing on phones; column-stack with
+           a horizontal hairline below each (except the last) reads
+           cleaner and lets us go up to 32px on the value since the
+           row no longer has to fit three side by side. */
+        @media (max-width: 768px) {
+          .cs-hero__metrics {
+            flex-direction: column;
+            gap: 0;
+          }
+          .cs-hero__metric {
+            padding: 16px 0;
+            padding-left: 0;
+            border-left: 0;
+            border-bottom: 1px solid rgba(244,241,234,0.15);
+            width: 100%;
+          }
+          .cs-hero__metric:last-child { border-bottom: 0; }
+          .cs-hero__metric-value { font-size: 32px; }
+          .cs-hero__metric-label { font-size: 10px; }
+        }
+
         @media (max-width: 480px) {
           .cs-hero { padding: 40px 0 48px; }
           .cs-hero__headline { font-size: 36px; line-height: 1.05; }
           .cs-hero__body { font-size: 16px; }
-          .cs-hero__metrics { flex-wrap: wrap; gap: 20px; }
-          .cs-hero__metric {
-            padding-left: 20px;
-            min-width: calc(50% - 20px);
-          }
-          .cs-hero__metric[data-first="true"] { padding-left: 0; }
         }
       `}</style>
     </section>

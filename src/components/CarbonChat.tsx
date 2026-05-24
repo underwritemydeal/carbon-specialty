@@ -157,7 +157,19 @@ export function CarbonChat({
   const nextTurnVoiceRef = useRef<boolean>(false);
   const autoPlayedRef = useRef<Set<number>>(new Set());
 
+  // C.S.2.0.1 (mobile patch) — skip the initial scroll-to-bottom.
+  // On a short mobile console the greeting was tall enough to overflow
+  // the messages area; programmatically setting scrollTop = scrollHeight
+  // on mount clipped the first line of "Hi — I'm Carbon…". The fix
+  // is to let the messages area start at scroll-top 0 on first render
+  // (greeting visible from the top), then auto-scroll only when a
+  // new message lands.
+  const initialScrollSkippedRef = useRef(false);
   useEffect(() => {
+    if (!initialScrollSkippedRef.current) {
+      initialScrollSkippedRef.current = true;
+      return;
+    }
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, thinking, mode]);
 
@@ -697,7 +709,15 @@ export function CarbonChat({
         <header className="cs-console__head">
           <div className="cs-console__head-left">
             <span className="cs-console__title">Property Intake</span>
-            <span className="cs-console__sub">Quote started · Specialist review next</span>
+            {/* C.S.2.0.1 (mobile patch) — desktop subtitle wraps
+                to two lines at narrow widths. Shorter mobile copy
+                fits on one line at the Plex Mono 9px treatment. */}
+            <span className="cs-console__sub cs-console__sub--desktop">
+              Quote started · Specialist review next
+            </span>
+            <span className="cs-console__sub cs-console__sub--mobile">
+              Quote started · In review
+            </span>
           </div>
           <div className="cs-console__head-right">
             <PinePulseDot />
@@ -1989,22 +2009,36 @@ function ConsoleStyles() {
         }
       }
 
-      /* C.S.2.0.8 — phone-specific sizing. The inline console now
-         renders at all breakpoints (previously hidden ≤768px in the
-         hero, which left mobile users without the chat surface
-         until they tapped a CTA). Default 600px height is too tall
-         for a phone — drop to 520px and tighten internal padding so
-         the console fits in roughly two-thirds of the viewport
-         without dominating the page. */
-      @media (max-width: 480px) {
+      /* C.S.2.0.1 (mobile patch) — subtitle swap. The desktop sub
+         (~36 chars) wrapped to two lines on narrow consoles; mobile
+         sub is the shorter "Quote started · In review". Default
+         state hides the mobile copy; ≤768px swaps. */
+      .cs-console__sub--mobile { display: none; }
+
+      /* C.S.2.0.1 (mobile patch) — replaces the C.S.2.0.8 phone
+         sizing block. The fixed 520px height left the messages area
+         clipping the greeting; switching to a viewport-relative
+         max-height with a min-height floor gives the chat room to
+         breathe without dominating the page. Property summary
+         hidden entirely at ≤768px — the intake flow still captures
+         facts (they're tracked in state), they just don't render
+         in the panel until desktop. */
+      @media (max-width: 768px) {
         .cs-console {
-          height: 520px;
+          height: auto;
+          min-height: 420px;
+          max-height: 70vh;
           border-radius: 12px;
         }
         .cs-console__head { padding: 14px 16px; }
         .cs-console__messages { padding: 16px; }
         .cs-console__input-area { padding: 12px 16px; }
-        .cs-console__panel { padding: 12px 16px; }
+        .cs-console__panel { display: none; }
+        .cs-console__sub--desktop { display: none; }
+        .cs-console__sub--mobile { display: inline; }
+        /* Secure-session label collapses to just the pine dot on
+           mobile — the text was crowding the header. */
+        .cs-console__secure { display: none; }
       }
     `}</style>
   );
