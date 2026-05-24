@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { Section } from "@/components/Section";
+import { PageHero } from "@/components/PageHero";
+import { BottomCTA } from "@/components/BottomCTA";
 import { JsonLd } from "@/components/JsonLd";
 import {
   insuranceAgency,
   localBusiness,
   breadcrumbs,
 } from "@/lib/schema";
+
 export const metadata: Metadata = {
   title: "Contact — Office, hours, licensure",
   description:
@@ -15,12 +17,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
 };
 
-const ROWS: [string, React.ReactNode][] = [
-  ["Phone", "Launching soon — use the chat or quote form."],
-  ["Email", "Launching soon — use the quote form."],
-  ["Hours", "Mon – Fri · 8a – 6p Pacific"],
-  ["Office", "Long Beach, California"],
-  ["Licensed", "AZ · CA · CO · ID · NV · OR · TX · UT · WA"],
+const ROWS: Array<{ label: string; value: React.ReactNode }> = [
+  { label: "Phone", value: "Launching soon — use the chat or quote form." },
+  { label: "Email", value: "Launching soon — use the quote form." },
+  { label: "Hours", value: "Mon – Fri · 8a – 6p Pacific" },
+  { label: "Office", value: "Long Beach, California" },
+  { label: "Licensed", value: "AZ · CA · CO · ID · NV · OR · TX · UT · WA" },
 ];
 
 export default function ContactPage() {
@@ -38,62 +40,79 @@ export default function ContactPage() {
       />
       <Header activePath="/contact" />
       <main id="main">
-        <Section
-          number={1}
+        <PageHero
           eyebrow="Contact"
-          headline={
-            <>
-              Reach Carbon. <em style={{ fontStyle: "italic" }}>Directly.</em>
-            </>
-          }
+          headline="Reach Carbon."
+          accent="Directly."
           lede="No tickets, no chatbot tree (other than the one on the homepage, which is voluntary). Direct phone and email are launching with the public site — until then, the Carbon chat or the quote form reaches a specialist."
-        >
-          <dl
-            style={{
-              display: "grid",
-              gridTemplateColumns: "160px 1fr",
-              gap: "24px 32px",
-              margin: 0,
-              borderTop: "1px solid var(--ink)",
-              paddingTop: 32,
-            }}
-            className="contact-rows"
-          >
-            {ROWS.map(([k, v]) => (
-              <div key={k} style={{ display: "contents" }}>
-                <dt
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    color: "var(--ink-3)",
-                    paddingTop: 4,
-                  }}
-                >
-                  {k}
-                </dt>
-                <dd
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--font-display)",
-                    fontSize: 24,
-                    color: "var(--ink)",
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {v}
-                </dd>
-              </div>
-            ))}
-            <style>{`
-              @media (max-width: 600px) {
-                .contact-rows { grid-template-columns: 1fr !important; gap: 4px 0 !important; }
-                .contact-rows dd { padding-bottom: 16px; }
+        />
+
+        <section className="cs-contact-rows" aria-labelledby="contact-rows-headline">
+          <div className="container">
+            <h2 id="contact-rows-headline" className="sr-only">
+              Office, hours, and licensure
+            </h2>
+            <dl className="cs-contact-rows__dl">
+              {ROWS.map(({ label, value }) => (
+                <div key={label} className="cs-contact-rows__row">
+                  <dt className="cs-contact-rows__label">{label}</dt>
+                  <dd className="cs-contact-rows__value">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <style>{`
+            .cs-contact-rows {
+              background: var(--ink);
+              color: var(--paper);
+              padding: 64px 0 96px;
+              border-bottom: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-contact-rows__dl {
+              margin: 0;
+              padding: 0;
+              border-top: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-contact-rows__row {
+              display: grid;
+              grid-template-columns: 180px 1fr;
+              gap: 32px;
+              padding: 28px 0;
+              border-bottom: 1px solid rgba(244,241,234,0.10);
+              align-items: baseline;
+            }
+            .cs-contact-rows__label {
+              margin: 0;
+              font-family: var(--font-mono);
+              font-size: 11px;
+              letter-spacing: 0.16em;
+              text-transform: uppercase;
+              color: var(--ember);
+            }
+            .cs-contact-rows__value {
+              margin: 0;
+              font-family: var(--font-display);
+              font-weight: 400;
+              font-size: 22px;
+              line-height: 1.3;
+              letter-spacing: -0.01em;
+              color: var(--paper);
+              text-wrap: pretty;
+            }
+            @media (max-width: 600px) {
+              .cs-contact-rows { padding: 48px 0 72px; }
+              .cs-contact-rows__row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+                padding: 22px 0;
               }
-            `}</style>
-          </dl>
-        </Section>
+              .cs-contact-rows__value { font-size: 18px; }
+            }
+          `}</style>
+        </section>
+
+        <BottomCTA />
       </main>
       <Footer />
     </>

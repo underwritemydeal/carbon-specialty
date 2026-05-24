@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { Section } from "@/components/Section";
-import { Process } from "@/components/Process";
-import { FAQ, type FAQItem } from "@/components/FAQ";
-import { CTAStrip } from "@/components/CTAStrip";
+import { PageHero } from "@/components/PageHero";
+import { BottomCTA } from "@/components/BottomCTA";
 import { JsonLd } from "@/components/JsonLd";
 import {
   insuranceAgency,
@@ -13,6 +11,7 @@ import {
   webApplication,
   faqPage,
 } from "@/lib/schema";
+import type { FAQItem } from "@/components/FAQ";
 
 // DRAFT — review before publishing
 const HIW_FAQ: FAQItem[] = [
@@ -38,6 +37,29 @@ const HIW_FAQ: FAQItem[] = [
   },
 ];
 
+const STEPS: Array<{ title: string; body: string }> = [
+  {
+    title: "Open chat",
+    body: "Click the hero input or the Get-a-quote CTA. The Carbon chat panel slides in from the right.",
+  },
+  {
+    title: "Describe your building",
+    body: "Tell Carbon about the asset in your own words. Multifamily, mixed-use, SFR portfolio, HOA, builders risk.",
+  },
+  {
+    title: "AI captures details",
+    body: "The AI captures structured intake data — asset class, address, units, renewal date, owner contact — and confirms what's missing.",
+  },
+  {
+    title: "Specialist reviews",
+    body: "A licensed Carbon specialist reads the submission and requests any missing artifacts (rent rolls, loss runs, dec page).",
+  },
+  {
+    title: "Specialist follow-up",
+    body: "A licensed Carbon specialist follows up on every complete submission. The specialist tells you the indication and the timing once underwriting has read the schedule and ordered carrier quotes.",
+  },
+];
+
 export const metadata: Metadata = {
   title: "How Carbon Specialty's AI quote intake works",
   description:
@@ -45,7 +67,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/how-it-works" },
   openGraph: {
     title: "How Carbon Specialty's AI quote intake works",
-    images: [{ url: "/api/og?title=How%20it%20works&sub=AI%20quote%20intake%20%C2%B7%20Specialist-reviewed", width: 1200, height: 630 }],
+    images: [
+      {
+        url: "/api/og?title=How%20it%20works&sub=AI%20quote%20intake%20%C2%B7%20Specialist-reviewed",
+        width: 1200,
+        height: 630,
+      },
+    ],
   },
 };
 
@@ -66,106 +94,206 @@ export default function HowItWorksPage() {
       />
       <Header activePath="/how-it-works" />
       <main id="main">
-        <Section
-          number={1}
+        <PageHero
           eyebrow="How it works"
-          headline={
-            <>
-              The AI quote intake. <em style={{ fontStyle: "italic" }}>Specialist-reviewed.</em>
-            </>
-          }
-          lede="Carbon Specialty's conversational quote tool is the fastest way to put a real estate insurance submission in front of a specialist. The AI captures the schedule — asset class, address, units, year built, current carrier — and a licensed Carbon specialist comes back with an indication within one business day."
-        >
-          <Process />
-        </Section>
+          headline="The AI quote intake."
+          accent="Specialist-reviewed."
+          lede="Carbon's conversational quote tool is the fastest way to put a real estate insurance submission in front of a specialist. The AI captures the schedule — asset class, address, units, year built, current carrier — and a licensed Carbon specialist comes back with an indication within one business day."
+        />
 
-        <Section
-          number={2}
-          eyebrow="02 — Five named steps"
-          headline="From open-chat to quote."
-          lede="The HowTo schema on this page enumerates the same five steps an AI search engine will read."
-        >
-          <ol
-            style={{
-              margin: 0,
-              padding: 0,
-              listStyle: "none",
-              display: "grid",
-              gap: 0,
-              borderTop: "1px solid var(--ink)",
-            }}
-          >
-            {[
-              ["Open chat", "Click the hero input or the Get-a-quote CTA. The Carbon chat panel slides in from the right."],
-              ["Describe your building", "Tell Carbon about the asset in your own words. Multifamily, mixed-use, SFR portfolio, HOA, builders risk."],
-              ["AI captures details", "The AI captures structured intake data — asset class, address, units, renewal date, owner contact — and confirms what's missing."],
-              ["Specialist reviews", "A licensed Carbon specialist reads the submission and requests any missing artifacts (rent rolls, loss runs, dec page)."],
-              ["Specialist follow-up", "A licensed Carbon specialist follows up on every complete submission. The specialist tells you the indication and the timing once underwriting has read the schedule and ordered carrier quotes."],
-            ].map(([title, body], i) => (
-              <li
-                key={title}
-                style={{
-                  borderBottom: "1px solid var(--ink)",
-                  padding: "32px 0",
-                  display: "grid",
-                  gridTemplateColumns: "60px 1fr 2fr",
-                  gap: 32,
-                }}
-                className="hiw-step"
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    letterSpacing: "0.16em",
-                    color: "var(--ember)",
-                  }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 400,
-                    fontSize: 28,
-                    lineHeight: 1.1,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {title}
-                </h3>
-                <p
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--font-body)",
-                    fontSize: 16,
-                    lineHeight: 1.6,
-                    color: "var(--ink-2)",
-                  }}
-                >
-                  {body}
-                </p>
-              </li>
-            ))}
-            <style>{`
-              @media (max-width: 768px) {
-                .hiw-step { grid-template-columns: 1fr !important; gap: 8px !important; }
+        {/* Five named steps */}
+        <section className="cs-hiw-steps" aria-labelledby="hiw-steps-headline">
+          <div className="container">
+            <div className="cs-hiw-steps__intro">
+              <span className="cs-hiw-steps__eyebrow">02 — Five named steps</span>
+              <h2 id="hiw-steps-headline" className="cs-hiw-steps__headline">
+                From open-chat to quote.
+              </h2>
+            </div>
+
+            <ol className="cs-hiw-steps__list">
+              {STEPS.map(({ title, body }, i) => (
+                <li key={title} className="cs-hiw-steps__item">
+                  <span className="cs-hiw-steps__num">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="cs-hiw-steps__title">{title}</h3>
+                  <p className="cs-hiw-steps__body">{body}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <style>{`
+            .cs-hiw-steps {
+              background: var(--ink);
+              color: var(--paper);
+              padding: 80px 0;
+              border-bottom: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-hiw-steps__intro {
+              display: flex;
+              flex-direction: column;
+              gap: 14px;
+              margin-bottom: 56px;
+            }
+            .cs-hiw-steps__eyebrow {
+              font-family: var(--font-mono);
+              font-size: 11px;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              color: var(--ember);
+            }
+            .cs-hiw-steps__headline {
+              margin: 0;
+              font-family: var(--font-display);
+              font-weight: 400;
+              font-size: 40px;
+              line-height: 1.1;
+              color: var(--paper);
+              text-wrap: balance;
+            }
+            .cs-hiw-steps__list {
+              list-style: none;
+              margin: 0;
+              padding: 0;
+              border-top: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-hiw-steps__item {
+              display: grid;
+              grid-template-columns: 80px 1fr 2fr;
+              gap: 32px;
+              padding: 28px 0;
+              border-bottom: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-hiw-steps__num {
+              font-family: var(--font-mono);
+              font-size: 11px;
+              letter-spacing: 0.16em;
+              color: var(--ember);
+              padding-top: 6px;
+            }
+            .cs-hiw-steps__title {
+              margin: 0;
+              font-family: var(--font-display);
+              font-weight: 400;
+              font-size: 26px;
+              line-height: 1.15;
+              letter-spacing: -0.02em;
+              color: var(--paper);
+            }
+            .cs-hiw-steps__body {
+              margin: 0;
+              font-family: var(--font-body);
+              font-size: 16px;
+              line-height: 1.6;
+              color: rgba(244,241,234,0.70);
+              max-width: 60ch;
+              text-wrap: pretty;
+            }
+
+            @media (max-width: 768px) {
+              .cs-hiw-steps__item {
+                grid-template-columns: 1fr;
+                gap: 8px;
               }
-            `}</style>
-          </ol>
-        </Section>
+              .cs-hiw-steps__num { padding-top: 0; }
+              .cs-hiw-steps__headline { font-size: 32px; }
+            }
+            @media (max-width: 480px) {
+              .cs-hiw-steps { padding: 56px 0; }
+            }
+          `}</style>
+        </section>
 
-        <Section
-          number={3}
-          eyebrow="03 — FAQ"
-          headline="What people ask about the AI quote tool."
-          lede="Draft answers under broker review."
-        >
-          <FAQ items={HIW_FAQ} eyebrow="03 — FAQ" />
-        </Section>
+        {/* FAQ */}
+        <section className="cs-hiw-faq" aria-labelledby="hiw-faq-headline">
+          <div className="container">
+            <div className="cs-hiw-faq__intro">
+              <span className="cs-hiw-faq__eyebrow">03 — FAQ</span>
+              <h2 id="hiw-faq-headline" className="cs-hiw-faq__headline">
+                What people ask about the AI quote tool.
+              </h2>
+            </div>
 
-        <CTAStrip />
+            <dl className="cs-hiw-faq__list">
+              {HIW_FAQ.map(({ q, a }) => (
+                <div key={q} className="cs-hiw-faq__row">
+                  <dt className="cs-hiw-faq__q">{q}</dt>
+                  <dd className="cs-hiw-faq__a">{a}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <style>{`
+            .cs-hiw-faq {
+              background: #0D1214;
+              color: var(--paper);
+              padding: 80px 0;
+            }
+            .cs-hiw-faq__intro {
+              display: flex;
+              flex-direction: column;
+              gap: 14px;
+              margin-bottom: 48px;
+            }
+            .cs-hiw-faq__eyebrow {
+              font-family: var(--font-mono);
+              font-size: 11px;
+              letter-spacing: 0.14em;
+              text-transform: uppercase;
+              color: var(--ember);
+            }
+            .cs-hiw-faq__headline {
+              margin: 0;
+              font-family: var(--font-display);
+              font-weight: 400;
+              font-size: 36px;
+              line-height: 1.1;
+              color: var(--paper);
+              text-wrap: balance;
+            }
+            .cs-hiw-faq__list {
+              margin: 0;
+              padding: 0;
+              border-top: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-hiw-faq__row {
+              display: grid;
+              grid-template-columns: 1fr 2fr;
+              gap: 48px;
+              padding: 32px 0;
+              border-bottom: 1px solid rgba(244,241,234,0.10);
+            }
+            .cs-hiw-faq__q {
+              margin: 0;
+              font-family: var(--font-display);
+              font-weight: 400;
+              font-size: 22px;
+              line-height: 1.25;
+              color: var(--paper);
+              text-wrap: balance;
+            }
+            .cs-hiw-faq__a {
+              margin: 0;
+              font-family: var(--font-body);
+              font-size: 16px;
+              line-height: 1.6;
+              color: rgba(244,241,234,0.70);
+              text-wrap: pretty;
+            }
+            @media (max-width: 768px) {
+              .cs-hiw-faq__row { grid-template-columns: 1fr; gap: 12px; }
+              .cs-hiw-faq__headline { font-size: 28px; }
+            }
+            @media (max-width: 480px) {
+              .cs-hiw-faq { padding: 56px 0; }
+            }
+          `}</style>
+        </section>
+
+        <BottomCTA />
       </main>
       <Footer />
     </>
