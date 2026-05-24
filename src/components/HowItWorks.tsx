@@ -15,25 +15,25 @@ const STEPS = [
   {
     key: "smart-intake",
     label: "Smart intake",
-    body: "Answer a few questions about your property or portfolio. We'll capture what underwriters need.",
+    body: "Tell Carbon about your property in conversation. The AI captures what underwriters need.",
     icon: ChatIcon,
   },
   {
-    key: "expert-review",
-    label: "Expert review",
-    body: "Your submission is reviewed by specialists and matched to the right markets.",
+    key: "live-indication",
+    label: "Live indication",
+    body: "Carbon shares an indication of pricing in the chat as the schedule comes together — non-binding, but grounded in real markets.",
     icon: DocIcon,
   },
   {
-    key: "market-options",
-    label: "Market options",
-    body: "Receive real coverage options from top-rated carriers — fast.",
+    key: "specialist-firm-pricing",
+    label: "Specialist follow-up",
+    body: "A licensed specialist reviews the submission, places it with the right carriers, and follows up with firm pricing.",
     icon: BuildingIcon,
   },
   {
     key: "ongoing-support",
     label: "Ongoing support",
-    body: "We're here year-round to help manage your policy and your portfolio.",
+    body: "We stay with you year-round — renewals, mid-term endorsements, claims.",
     icon: PersonIcon,
   },
 ];

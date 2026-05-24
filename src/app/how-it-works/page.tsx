@@ -25,7 +25,11 @@ const HIW_FAQ: FAQItem[] = [
   },
   {
     q: "Is the AI making decisions about my coverage?",
-    a: "No. The conversational AI tool is intake only. It captures and structures the information, then routes it to a licensed Carbon specialist for underwriting, carrier selection, and the quote itself.",
+    a: "No. The AI captures intake and shares a non-binding indication of pricing in the chat so you have a frame of reference. Coverage selection, carrier placement, and the firm bind-eligible quote all run through a licensed Carbon specialist.",
+  },
+  {
+    q: "What's the difference between the chat indication and the specialist's quote?",
+    a: "The indication is a ballpark — Carbon reads the schedule against the markets that typically fit your asset class and surfaces a price range while you're talking. The specialist's firm quote comes back after a full review, with the actual carrier, terms, exclusions, and a number you can bind.",
   },
   {
     q: "Who reviews my submission?",
@@ -47,16 +51,16 @@ const STEPS: Array<{ title: string; body: string }> = [
     body: "Tell Carbon about the asset in your own words. Multifamily, mixed-use, SFR portfolio, HOA, builders risk.",
   },
   {
-    title: "AI captures details",
-    body: "The AI captures structured intake data — asset class, address, units, renewal date, owner contact — and confirms what's missing.",
+    title: "AI captures details + shares an indication",
+    body: "The AI captures structured intake data — asset class, address, units, renewal date, owner contact — and shares an indication of pricing in the chat as the schedule comes together. Non-binding, but grounded in the markets that fit your asset class.",
   },
   {
     title: "Specialist reviews",
     body: "A licensed Carbon specialist reads the submission and requests any missing artifacts (rent rolls, loss runs, dec page).",
   },
   {
-    title: "Specialist follow-up",
-    body: "A licensed Carbon specialist follows up on every complete submission. The specialist tells you the indication and the timing once underwriting has read the schedule and ordered carrier quotes.",
+    title: "Firm pricing from a specialist",
+    body: "The specialist places the submission with the right carriers and follows up with firm, bind-eligible pricing. The chat indication helps you frame expectations; the specialist's quote is what you'll actually buy.",
   },
 ];
 
